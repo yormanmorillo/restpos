@@ -111,7 +111,8 @@ Script instalado en el VPS:
 ```
 
 - Usa `VACUUM INTO` sobre SQLite para generar una copia consistente sin detener la venta.
-- Comprime el archivo en `/home/ubuntu/restpos-backups/`.
+- Genera un respaldo `.db.gz` de SQLite y un `.tar.gz` del directorio `/data/uploads` (fotos de productos y comprobantes).
+- Guarda ambos en `/home/ubuntu/restpos-backups/`.
 - Conserva 14 días.
 - Cron diario a las **09:00 UTC** (03:00 en Ciudad de México).
 - Los respaldos son locales. Cópialos periódicamente a otro servidor o almacenamiento S3.
@@ -145,7 +146,19 @@ sudo bash -c '
 '
 ```
 
-3. Arranca de nuevo el servicio y comprueba `/api/health`, el login, el historial y las mesas.
+3. Restaura las fotos si el respaldo incluye `restpos-uploads-*.tar.gz`:
+
+```bash
+sudo bash -c '
+  set -e
+  VOL=/var/lib/docker/volumes/restpos_data/_data
+  mkdir -p "$VOL/uploads"
+  tar -xzf /home/ubuntu/restpos-backups/restpos-uploads-ARCHIVO.tar.gz -C "$VOL"
+  chown -R 1000:1000 "$VOL/uploads"
+'
+```
+
+4. Arranca de nuevo el servicio y comprueba `/api/health`, el login, el historial, las fotos y las mesas.
 
 ## Actualizar la aplicación
 
