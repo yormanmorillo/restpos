@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import Modal from '@/components/Modal';
 
 const ROLES = [
-  ['admin', 'Administrador'],
+  ['admin', 'Gerente general'],
   ['manager', 'Gerente'],
   ['cashier', 'Cajero'],
   ['server', 'Mesero'],
   ['kitchen', 'Cocina'],
-  ['owner', 'Propietario del software'],
+  ['owner', 'Super admin (MATMAX)'],
 ];
 
 export default function StaffModal({ open, person, onClose, onSubmit, allowOwner = false }) {

@@ -41,6 +41,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('all');
   const [productModal, setProductModal] = useState({ open: false, product: null });
   const [categoryModal, setCategoryModal] = useState({ open: false, category: null });
   const [importOpen, setImportOpen] = useState(false);
@@ -76,14 +77,17 @@ export default function AdminPage() {
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es');
-    if (!query) return products;
-    return products.filter(
+    const byCategory = productCategoryFilter === 'all'
+      ? products
+      : products.filter((product) => product.categoryId === productCategoryFilter);
+    if (!query) return byCategory;
+    return byCategory.filter(
       (product) =>
         product.name.toLocaleLowerCase('es').includes(query) ||
         product.categoryName.toLocaleLowerCase('es').includes(query) ||
         product.description.toLocaleLowerCase('es').includes(query),
     );
-  }, [products, search]);
+  }, [products, search, productCategoryFilter]);
 
   const activeProducts = products.filter((product) => product.active).length;
   const activeCategories = categories.filter((category) => category.active).length;
@@ -293,6 +297,20 @@ export default function AdminPage() {
                 />
               </label>
             </div>
+          </div>
+
+          <div className="admin-category-filter category-strip" role="tablist" aria-label="Filtrar productos por categoría">
+            <button type="button" role="tab" aria-selected={productCategoryFilter === 'all'} className={`category-chip ${productCategoryFilter === 'all' ? 'is-active' : ''}`} onClick={() => setProductCategoryFilter('all')}>
+              Todos <span>{products.length}</span>
+            </button>
+            {categories.map((category) => {
+              const count = products.filter((product) => product.categoryId === category.id).length;
+              return (
+                <button key={category.id} type="button" role="tab" aria-selected={productCategoryFilter === category.id} className={`category-chip ${productCategoryFilter === category.id ? 'is-active' : ''}`} onClick={() => setProductCategoryFilter(category.id)}>
+                  {category.name} <span>{count}</span>
+                </button>
+              );
+            })}
           </div>
 
           {filteredProducts.length === 0 ? (

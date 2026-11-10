@@ -59,6 +59,7 @@ import {
   productModifierGroupsSchema,
   paymentMethodCreateSchema,
   paymentMethodUpdateSchema,
+  paymentMethodToggleSchema,
   integrationCreateSchema,
   integrationUpdateSchema,
   inventoryItemCreateSchema,
@@ -200,14 +201,16 @@ export function createApp({ db, config }) {
     res.json({ methods: listPaymentMethods(db) });
   });
 
-  api.post('/payment-methods', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.post('/payment-methods', requireRoles('owner'), (req, res) => {
     const input = parseOrThrow(paymentMethodCreateSchema, req.body);
     res.status(201).json({ method: createPaymentMethod(db, input, req.staff.id) });
   });
 
   api.patch('/payment-methods/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
-    const input = parseOrThrow(paymentMethodUpdateSchema, req.body);
+    const input = req.staff.role === 'owner'
+      ? parseOrThrow(paymentMethodUpdateSchema, req.body)
+      : parseOrThrow(paymentMethodToggleSchema, req.body);
     res.json({ method: updatePaymentMethod(db, id, input, req.staff.id) });
   });
 

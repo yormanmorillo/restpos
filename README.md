@@ -44,7 +44,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Grupos de modificadores con selección única/múltiple, mínimo, máximo, obligatoriedad y precio adicional.
 - Asignación de grupos a cada producto.
 - Administración de áreas y mesas, capacidad y activación.
-- Equipo con roles `admin`, `manager`, `cashier`, `server` y `kitchen`.
+- Equipo con roles `owner` (super admin), `admin` (gerente general), `manager`, `cashier`, `server` y `kitchen`.
+- Jerarquía: solo el super admin crea o modifica métodos de pago y integraciones; el gerente general puede activarlos o desactivarlos.
 - Ajustes de restaurante, pedidos en línea, costo de entrega y configuración de impresoras.
 
 ### Pedidos en línea
@@ -132,7 +133,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **60 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **61 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 

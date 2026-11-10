@@ -7,8 +7,8 @@ import { api } from '@/lib/api';
 const AuthContext = createContext(null);
 
 export const ROLE_LABELS = {
-  owner: 'Propietario',
-  admin: 'Administrador',
+  owner: 'Super admin',
+  admin: 'Gerente general',
   manager: 'Gerente',
   cashier: 'Cajero',
   server: 'Mesero',

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { rmSync } from 'node:fs';
 import { makeContext, line } from './helpers.js';
+import { hashPin } from '../src/auth.js';
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
@@ -18,6 +19,16 @@ afterEach(() => {
   ctx.db.close();
   rmSync(ctx.config.uploadsPath, { recursive: true, force: true });
 });
+
+async function createOwnerAgent() {
+  const now = new Date().toISOString();
+  const result = ctx.db.prepare("INSERT INTO staff (name, role, pin_hash, active, created_at, updated_at) VALUES ('Super Test', 'owner', ?, 1, ?, ?)")
+    .run(hashPin('5555'), now, now);
+  const agent = request.agent(ctx.app);
+  const login = await agent.post('/api/auth/login').send({ staffId: Number(result.lastInsertRowid), pin: '5555' });
+  expect(login.status).toBe(200);
+  return agent;
+}
 
 async function openOrder(tableId = 1) {
   const response = await ctx.agent.post('/api/orders').send({ type: 'mesa', tableId });
@@ -39,7 +50,8 @@ describe('métodos de pago de Costa Rica', () => {
     expect(sinpe.allowsPhoto).toBe(true);
     expect(sinpe.kind).toBe('transfer');
 
-    const created = await ctx.agent.post('/api/payment-methods').send({
+    const owner = await createOwnerAgent();
+    const created = await owner.post('/api/payment-methods').send({
       code: 'sinpe_comercio',
       name: 'SINPE comercio',
       kind: 'transfer',
@@ -52,7 +64,7 @@ describe('métodos de pago de Costa Rica', () => {
     const method = created.body.method;
     expect(method.active).toBe(true);
 
-    const disabled = await ctx.agent.patch(`/api/payment-methods/${method.id}`).send({ active: false });
+    const disabled = await owner.patch(`/api/payment-methods/${method.id}`).send({ active: false });
     expect(disabled.status).toBe(200);
     expect(disabled.body.method.active).toBe(false);
 
@@ -89,6 +101,23 @@ describe('métodos de pago de Costa Rica', () => {
     expect(file.status).toBe(200);
     expect(file.headers['content-type']).toMatch(/image\/png/);
     expect((await request(ctx.app).get(photo.url)).status).toBe(401);
+  });
+
+  it('el gerente puede activar o desactivar pero no crear ni editar métodos', async () => {
+    const owner = await createOwnerAgent();
+    const created = await owner.post('/api/payment-methods').send({
+      code: 'metodo_extra', name: 'Método extra', kind: 'other', allowsPhoto: false, active: true, sortOrder: 60,
+    });
+    const method = created.body.method;
+    const denied = await ctx.agent.post('/api/payment-methods').send({
+      code: 'no_permitido', name: 'No permitido', kind: 'other', allowsPhoto: false, active: true, sortOrder: 70,
+    });
+    expect(denied.status).toBe(403);
+    const editDenied = await ctx.agent.patch(`/api/payment-methods/${method.id}`).send({ name: 'Cambio no permitido' });
+    expect(editDenied.status).toBe(422);
+    const toggled = await ctx.agent.patch(`/api/payment-methods/${method.id}`).send({ active: false });
+    expect(toggled.status).toBe(200);
+    expect(toggled.body.method.active).toBe(false);
   });
 
   it('no permite comprobantes en métodos sin foto', async () => {

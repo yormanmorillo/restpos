@@ -84,7 +84,7 @@ export default function OwnerPanelPage() {
           <h1>Panel del propietario</h1>
           <p>Hola, {staff?.name}. Desde aquí controlas la identidad del negocio, los pagos y las conexiones del sistema.</p>
         </div>
-        <span className="owner-badge"><Icon name="crown" size={18} /> Propietario</span>
+        <span className="owner-badge"><Icon name="crown" size={18} /> Super admin</span>
       </div>
 
       {error ? <div className="alert alert-error"><Icon name="alert" size={19} /><p>{error}</p><button type="button" className="btn btn-small btn-secondary" onClick={() => void load()}>Reintentar</button></div> : null}

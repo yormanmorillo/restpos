@@ -370,6 +370,8 @@ export const paymentMethodCreateSchema = z.object({
   sortOrder: z.number().int().min(0).max(9999).optional().default(0),
 });
 
+export const paymentMethodToggleSchema = z.object({ active: z.boolean() }).strict();
+
 export const paymentMethodUpdateSchema = z
   .object({
     code: z.string().trim().regex(/^[a-z0-9_]{2,40}$/, 'El código no es válido.').optional(),

@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import PaymentMethodModal from '@/components/admin/PaymentMethodModal';
 import { api } from '@/lib/api';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 const KIND_LABELS = { cash: 'Efectivo', card: 'Tarjeta', transfer: 'Transferencia', other: 'Otro' };
 
 export default function PaymentMethodsPage() {
+  const { staff } = useAuth();
+  const isOwner = staff?.role === 'owner';
   const [methods, setMethods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -67,11 +70,13 @@ export default function PaymentMethodsPage() {
         <div>
           <span className="eyebrow">Caja</span>
           <h1>Métodos de pago</h1>
-          <p>Activa, desactiva y configura cómo cobra tu restaurante. Incluye SINPE Móvil con comprobante fotográfico.</p>
+          <p>Activa o desactiva los métodos existentes. Solo el super admin puede crear nuevos métodos o cambiar su configuración.</p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setModal({ open: true, method: null })}>
-          <Icon name="plus" size={19} /> Nuevo método
-        </button>
+        {isOwner ? (
+          <button type="button" className="btn btn-primary" onClick={() => setModal({ open: true, method: null })}>
+            <Icon name="plus" size={19} /> Nuevo método
+          </button>
+        ) : null}
       </div>
 
       <div className="payment-methods-intro">
@@ -99,7 +104,7 @@ export default function PaymentMethodsPage() {
                 <span className="method-code">{method.code}</span>
               </div>
               <div className="payment-method-admin-actions">
-                <button type="button" className="btn btn-small btn-secondary" onClick={() => setModal({ open: true, method })}><Icon name="edit" size={16} /> Editar</button>
+                {isOwner ? <button type="button" className="btn btn-small btn-secondary" onClick={() => setModal({ open: true, method })}><Icon name="edit" size={16} /> Editar</button> : null}
                 <button type="button" className={`btn btn-small ${method.active ? 'btn-danger-quiet' : 'btn-success-quiet'}`} onClick={() => void toggleMethod(method)} disabled={busyId === method.id}>
                   {busyId === method.id ? <span className="spinner spinner-small" /> : null}
                   {method.active ? 'Desactivar' : 'Activar'}
@@ -115,7 +120,7 @@ export default function PaymentMethodsPage() {
         <p>Los métodos no se eliminan: se desactivan para conservar el historial. Si un pago antiguo usó un método inactivo, su nombre se mantiene en el ticket y en los reportes.</p>
       </div>
 
-      <PaymentMethodModal open={modal.open} method={modal.method} onClose={() => setModal({ open: false, method: null })} onSubmit={saveMethod} />
+      {isOwner ? <PaymentMethodModal open={modal.open} method={modal.method} onClose={() => setModal({ open: false, method: null })} onSubmit={saveMethod} /> : null}
       {toast ? <div className={`toast toast-${toast.type}`}>{toast.message}</div> : null}
     </div>
   );
