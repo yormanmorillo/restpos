@@ -52,6 +52,16 @@ Flujo recomendado:
 
 La foto también puede adjuntarse después desde el historial de pagos del pedido, siempre que el método elegido permita comprobante.
 
+## Moneda e impuestos
+
+El POS usa la moneda y la tasa configuradas en el servidor. Para operar en Costa Rica revisa:
+
+- `TAX_RATE_BPS`: el IVA general costarricense es **13%** (`1300`), salvo tarifas especiales.
+- Moneda base y precios del menú: el sistema no convierte automáticamente entre CRC y USD.
+- `APP_TIMEZONE`: usa `America/Costa_Rica` si toda la operación está en Costa Rica.
+
+La instancia de producción actual conserva la configuración existente; cámbiala antes de facturar formalmente en Costa Rica.
+
 ## Factura electrónica
 
 Este POS genera un **ticket interno** y control de caja; **no sustituye la factura electrónica de Hacienda**. Para operar formalmente en Costa Rica se debe integrar un proveedor de facturación electrónica autorizado (versión 4.4 o la vigente) y enviar el comprobante correspondiente. La foto de SINPE sirve como respaldo operativo, no como comprobante fiscal.
