@@ -34,7 +34,7 @@ Traefik (Docker, 80/443, Let's Encrypt)
 - **Proyecto Dokploy:** `RestPost`.
 - **Stack:** `restpos` (`appName: restpos-h7kjj3`), compose en modo `docker-compose`.
 - **Imágenes locales:** `restpos-api:latest` y `restpos-web:latest`.
-- **Persistencia:** volumen Docker `restpos_data`, montado en `/data`; SQLite en `/data/restpos.db`, con WAL.
+- **Persistencia:** volumen Docker `restpos_data`, montado en `/data`; SQLite en `/data/restpos.db` (WAL) y archivos en `/data/uploads` (fotos de productos y comprobantes de pago).
 - **Fuente para rebuild:** `/home/ubuntu/restpos-build`.
 
 ## DNS
@@ -51,6 +51,7 @@ Traefik gestiona y renueva los certificados de Let's Encrypt.
 ## Seguridad
 
 - **La autenticación del POS es propia de la aplicación:** cada empleado entra con su nombre y PIN; hay roles y sesiones.
+- **Comprobantes y fotos:** los archivos se guardan fuera de la base, en `/data/uploads`, y sobreviven a los reinicios junto con el volumen.
 - La cookie `restpos_session` es `HttpOnly`, `SameSite=Lax` y `Secure` en producción (`COOKIE_SECURE=true`).
 - La página pública `/pedir` y los endpoints `/api/public/*` están abiertos sin sesión por diseño. Todo lo demás exige una sesión válida.
 - Los PIN se guardan con `scrypt`; los tokens de sesión se guardan como hash SHA-256.
@@ -187,13 +188,27 @@ El compose del stack del API debe incluir:
 ```yaml
 NODE_ENV: production
 DATABASE_PATH: /data/restpos.db
+UPLOAD_DIR: /data/uploads
 APP_TIMEZONE: America/Mexico_City
 TAX_RATE_BPS: "1600"
 COOKIE_SECURE: "true"
 SESSION_TTL_HOURS: "12"
 ```
 
+`UPLOAD_DIR` es opcional: por defecto se usa la carpeta `uploads` junto a la base de datos, que en el volumen es `/data/uploads`.
+
 El frontend necesita `API_URL=http://api:4000` y `PORT=3000`.
+
+## Migración de métodos de pago
+
+La versión con métodos de pago configurables migra automáticamente las tablas antiguas de pedidos y pagos para permitir códigos como `sinpe` y `transferencia`. El proceso:
+
+1. Hace una copia lógica de pedidos y pagos.
+2. Reconstruye las tablas sin la restricción antigua de métodos.
+3. Conserva pagos históricos y les asigna un nombre visible.
+4. Crea los métodos iniciales de Costa Rica.
+
+Antes de actualizar, ejecuta un respaldo manual. Después del arranque verifica que el historial y los turnos anteriores siguen visibles.
 
 ## Logs y salud
 

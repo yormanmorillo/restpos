@@ -25,6 +25,7 @@ export function getKitchenTickets(db) {
     .prepare(`
       SELECT o.id, o.order_number, o.type, o.table_id, o.source, o.delivery,
              o.customer_name, o.notes, o.kitchen_sent_at, o.created_at, o.status,
+             o.total_cents, o.amount_paid_cents,
              t.name AS table_name, a.name AS area_name
       FROM orders o
       LEFT JOIN restaurant_tables t ON t.id = o.table_id
@@ -72,10 +73,13 @@ export function getKitchenTickets(db) {
       orderId: Number(order.id),
       orderNumber: order.order_number,
       type: order.type,
+      serviceType: order.type === 'mesa' ? 'dine_in' : order.delivery ? 'delivery' : 'takeaway',
       tableName: order.table_name,
       areaName: order.area_name,
       source: order.source,
       delivery: Boolean(order.delivery),
+      totalCents: Number(order.total_cents),
+      amountPaidCents: Number(order.amount_paid_cents ?? 0),
       customerName: order.customer_name,
       notes: order.notes,
       sentAt: order.kitchen_sent_at,

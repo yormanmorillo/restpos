@@ -45,6 +45,15 @@ export default function PosScreen() {
   }, [loadData]);
 
   useEffect(() => {
+    const orderId = Number(new URLSearchParams(window.location.search).get('order'));
+    if (!Number.isInteger(orderId) || orderId <= 0) return;
+    window.history.replaceState({}, '', '/');
+    api.getOrder(orderId)
+      .then((response) => setActiveOrder(response.order))
+      .catch((openError) => setNotice({ type: 'error', message: openError?.message || 'No se pudo abrir la cuenta.' }));
+  }, []);
+
+  useEffect(() => {
     if (!notice) return undefined;
     const timer = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(timer);
@@ -107,6 +116,19 @@ export default function PosScreen() {
     }
   }
 
+  async function handleOpenKitchenOrder(orderId) {
+    if (busyLabel) return;
+    setBusyLabel('Abriendo cuenta…');
+    try {
+      await fetchOrder(orderId);
+    } catch (openError) {
+      setNotice({ type: 'error', message: openError?.message || 'No se pudo abrir la cuenta.' });
+      await loadData({ silent: true });
+    } finally {
+      setBusyLabel('');
+    }
+  }
+
   async function handleClosed() {
     setActiveOrder(null);
     await loadData({ silent: true });
@@ -154,6 +176,7 @@ export default function PosScreen() {
         onNewTakeaway={() => handleNewTakeaway(false)}
         onNewDelivery={() => handleNewTakeaway(true)}
         onOpenTakeaway={handleOpenTakeaway}
+        onOpenKitchenOrder={handleOpenKitchenOrder}
         timeZone={catalog?.timezone}
       />
       {notice ? (

@@ -8,7 +8,7 @@ const ROLE_RULES = [
   { prefix: '/admin', roles: ['admin', 'manager'] },
   { prefix: '/caja', roles: ['admin', 'manager', 'cashier'] },
   { prefix: '/historial', roles: ['admin', 'manager', 'cashier'] },
-  { prefix: '/cocina', roles: ['admin', 'manager', 'kitchen'] },
+  { prefix: '/cocina', roles: ['admin', 'manager', 'cashier', 'kitchen'] },
 ];
 
 export default function AuthGate({ children }) {

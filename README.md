@@ -12,6 +12,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Mesas por área (salón principal y terraza), con estado libre/ocupada, consumo, artículos y tiempo abierto.
 - Pedidos para llevar y delivery desde el POS, con teléfono y dirección de entrega.
 - Catálogo por categorías, búsqueda instantánea, alta de productos con un toque, cantidades, notas por producto y notas generales del pedido.
+- **Fotos de productos** en el menú del POS y en la página pública de pedidos.
+- Etiquetas claras de servicio: **Comer aquí**, **Para llevar** y **Delivery** en mesas, caja, cocina, tickets y reportes.
 - Autoguardado del pedido con llaves de línea idempotentes.
 - Descuentos por porcentaje o monto y propina por porcentaje o monto.
 - Historial de pedidos y consulta del ticket.
@@ -19,6 +21,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 ### Cobro
 - Pagos en efectivo, tarjeta u otros.
 - **Pagos parciales y mixtos**: el pedido permanece abierto hasta cubrir el saldo; cada pago queda registrado con su método, monto, efectivo recibido y cambio.
+- **Métodos de pago administrables**: efectivo, tarjeta, SINPE Móvil, transferencia y métodos personalizados; se pueden activar o desactivar.
+- **Comprobantes fotográficos** para SINPE Móvil y transferencias, guardados con el pago.
 - Bloqueo de edición cuando existe un pago parcial.
 - Cálculo de cambio y ticket imprimible de 80 mm.
 - Turnos de caja obligatorios para cobrar (configurable), fondo inicial, efectivo esperado, conteo y diferencia.
@@ -27,6 +31,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Pantalla `/cocina` con columnas **Nuevos**, **En preparación** y **Listos**.
 - Actualización automática cada 5 segundos.
 - Cambio de estado por platillo y por ticket.
+- **Cocina integrada en el POS y en Caja**: una cola de platillos permite marcar preparando/listo/servido sin abrir una pantalla separada.
+- Los cajeros también pueden usar el KDS completo si el restaurante no tiene una estación de cocina dedicada.
 - Comandas con mesa, cliente, modificadores, notas y tiempo transcurrido.
 - Envío a cocina desde el POS, conservando el estado de las líneas ya enviadas.
 
@@ -122,7 +128,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **48 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **55 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -153,6 +159,7 @@ Restablece el PIN, reactiva la cuenta, la deja como `admin` y cierra sus sesione
 | `SESSION_TTL_HOURS` | `12` | Duración de la sesión de empleado. |
 | `COOKIE_SECURE` | `false` | Debe ser `true` en producción con HTTPS. |
 | `API_URL` | `http://127.0.0.1:4000` | Destino del proxy `/api` de Next.js. |
+| `UPLOAD_DIR` | `<directorio de la base>/uploads` | Fotos de productos y comprobantes de pago. En Docker: `/data/uploads`. |
 
 ## Arquitectura
 
@@ -226,9 +233,10 @@ Navegador / tablet / KDS / cliente en línea
 ## Modelo de datos principal
 
 - `staff`, `sessions`: empleados, roles y sesiones.
-- `shifts`, `payments`: turnos de caja y pagos parciales/mixtos.
+- `shifts`, `payments`, `payment_photos`: turnos, pagos parciales/mixtos y comprobantes.
+- `payment_methods`: métodos configurables con tipo, icono y permiso de foto.
 - `areas`, `restaurant_tables`: salón y mesas.
-- `categories`, `products`: catálogo.
+- `categories`, `products`: catálogo; `products.image_path` guarda la foto.
 - `modifier_groups`, `modifiers`, `product_modifier_groups`, `order_item_modifiers`: opciones y snapshots.
 - `orders`: cabecera, tipo, entrega, totales, saldo, origen y fechas.
 - `order_items`: líneas con precio congelado, estado de cocina, curso y notas.
@@ -279,11 +287,13 @@ La API vive en `/api`. Los endpoints de autenticación y `/api/public/*` son pú
 | `GET/POST/PATCH` | `/api/admin/tables`, `/api/areas` | Salón. |
 | `GET` | `/api/reports/daily`, `/api/reports/daily.csv` | Reporte y exportación. |
 | `GET` | `/api/public/restaurant` | Menú público. |
+| `GET` | `/api/public/product-images/:filename` | Foto pública de producto. |
 | `POST` | `/api/public/orders` | Pedido en línea. |
 
 ## Alcance y límites
 
 - **No procesa tarjetas**: registra el método de pago; la terminal bancaria es externa.
+- **Facturación electrónica**: el ticket es interno; no sustituye la factura electrónica de Hacienda en Costa Rica.
 - **No incluye inventario ni recetas**: el menú se administra, pero no descuenta insumos.
 - **SQLite**: adecuado para una o pocas terminales en el mismo local. Para múltiples sucursales o alta concurrencia habría que migrar a PostgreSQL.
 - **No hay sincronización offline**: el POS requiere conexión con la API.

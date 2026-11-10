@@ -18,8 +18,12 @@ async function request(path, { method = 'GET', body, skipUnauthorizedEvent = fal
     headers: { Accept: 'application/json' },
   };
   if (body !== undefined) {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(body);
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      options.body = body;
+    } else {
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(body);
+    }
   }
 
   let response;
@@ -108,6 +112,22 @@ export const api = {
   createProduct: (body) => request('/admin/products', { method: 'POST', body }),
   updateProduct: (id, body) => request(`/admin/products/${id}`, { method: 'PATCH', body }),
   setProductModifierGroups: (id, groupIds) => request(`/admin/products/${id}/modifier-groups`, { method: 'PUT', body: { groupIds } }),
+  uploadProductImage: (id, file) => {
+    const form = new FormData();
+    form.append('image', file);
+    return request(`/admin/products/${id}/image`, { method: 'POST', body: form });
+  },
+  deleteProductImage: (id) => request(`/admin/products/${id}/image`, { method: 'DELETE' }),
+
+  getPaymentMethods: () => request('/payment-methods'),
+  createPaymentMethod: (body) => request('/payment-methods', { method: 'POST', body }),
+  updatePaymentMethod: (id, body) => request(`/payment-methods/${id}`, { method: 'PATCH', body }),
+  uploadPaymentPhotos: (orderId, paymentId, files) => {
+    const form = new FormData();
+    for (const file of files) form.append('photos', file);
+    return request(`/orders/${orderId}/payments/${paymentId}/photos`, { method: 'POST', body: form });
+  },
+  deletePaymentPhoto: (photoId) => request(`/payment-photos/${photoId}`, { method: 'DELETE' }),
 
   getStaff: () => request('/staff'),
   createStaff: (body) => request('/staff', { method: 'POST', body }),

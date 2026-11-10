@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
-import { formatTime } from '@/lib/format';
+import { formatTime, serviceLabel } from '@/lib/format';
 
 const COLUMNS = [
   { status: 'sent', title: 'Nuevos', hint: 'Pedidos enviados', icon: 'receipt', action: 'Empezar', next: 'preparing' },
@@ -71,6 +71,7 @@ export default function KitchenPage() {
     setError('');
     try {
       await api.updateKitchenItem(item.id, nextStatus);
+      window.dispatchEvent(new CustomEvent('restpos:kitchen-changed'));
       await load(true);
     } catch (updateError) {
       setError(updateError.message || 'No se pudo actualizar el platillo.');
@@ -128,8 +129,8 @@ export default function KitchenPage() {
                       <article key={`${item.ticket.orderId}-${item.id}`} className="kds-card">
                         <div className="kds-card-top">
                           <span className="kds-order">{item.ticket.orderNumber}</span>
-                          <span className={`kds-table ${item.ticket.delivery ? 'is-delivery' : ''}`}>
-                            {item.ticket.delivery ? 'Delivery' : item.ticket.tableName ?? 'Para llevar'}
+                          <span className={`service-badge service-${item.ticket.serviceType}`}>
+                            {serviceLabel(item.ticket)}
                           </span>
                           <span className="kds-time">{elapsedLabel(item.sentAt, now)}</span>
                         </div>

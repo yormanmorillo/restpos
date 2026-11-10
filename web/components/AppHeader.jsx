@@ -9,7 +9,7 @@ import { ROLE_LABELS, useAuth } from './auth/AuthProvider';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Vender', icon: 'pos', roles: ['admin', 'manager', 'cashier', 'server'] },
-  { href: '/cocina', label: 'Cocina', icon: 'chef', roles: ['admin', 'manager', 'kitchen'] },
+  { href: '/cocina', label: 'Cocina', icon: 'chef', roles: ['admin', 'manager', 'cashier', 'kitchen'] },
   { href: '/caja', label: 'Caja', icon: 'cash', roles: ['admin', 'manager', 'cashier'] },
   { href: '/historial', label: 'Historial', icon: 'history', roles: ['admin', 'manager', 'cashier'] },
   { href: '/admin', label: 'Administración', icon: 'admin', roles: ['admin', 'manager'] },

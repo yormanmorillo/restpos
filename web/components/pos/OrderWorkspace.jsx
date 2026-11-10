@@ -5,7 +5,7 @@ import Icon from '@/components/Icon';
 import Modal from '@/components/Modal';
 import { formatPercentBps } from '@restpos/shared/money';
 import { api } from '@/lib/api';
-import { formatMoney, paymentLabel, productQtyInOrder } from '@/lib/format';
+import { formatMoney, paymentLabel, productQtyInOrder, serviceLabel, serviceShortLabel } from '@/lib/format';
 import { useDraftOrder } from '@/lib/useDraftOrder';
 import DiscountModal from './DiscountModal';
 import PaymentModal from './PaymentModal';
@@ -35,10 +35,10 @@ function SaveIndicator({ status }) {
 
 function PaymentSuccess({ order, onNewOrder }) {
   const [openingReceipt, setOpeningReceipt] = useState(false);
-  const paymentMethods = [...new Set((order.payments ?? []).map((payment) => payment.paymentMethod))];
-  const paymentText = paymentMethods.length > 1
-    ? `Pago mixto · ${paymentMethods.map(paymentLabel).join(' + ')}`
-    : paymentLabel(order.paymentMethod);
+  const paymentNames = [...new Set((order.payments ?? []).map((payment) => payment.paymentMethodName || paymentLabel(payment.paymentMethod)))];
+  const paymentText = paymentNames.length > 1
+    ? `Pago mixto · ${paymentNames.join(' + ')}`
+    : (paymentNames[0] || paymentLabel(order.paymentMethod));
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState('');
 
@@ -57,7 +57,7 @@ function PaymentSuccess({ order, onNewOrder }) {
         <span className="eyebrow">Venta completada</span>
         <h1>{formatMoney(order.totalCents)}</h1>
         <p className="success-subtitle">
-          {order.orderNumber} · {order.type === 'mesa' ? order.tableName : 'Para llevar'} ·{' '}
+          {order.orderNumber} · {serviceLabel(order)} ·{' '}
           {paymentText}
         </p>
 
@@ -118,6 +118,7 @@ function PaymentSuccess({ order, onNewOrder }) {
             Nuevo pedido
           </button>
         </div>
+        {order.photoUploadError ? <p className="form-error">{order.photoUploadError}</p> : null}
         {printError ? <p className="form-error">{printError}</p> : null}
         <button type="button" className="text-button" onClick={() => openReceipt(false)}>
           Solo ver el ticket
@@ -223,6 +224,9 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         disabled={disabled || locked}
         aria-label={`${product.name}, ${formatMoney(product.priceCents)}${disabled ? ', no disponible' : '. Agregar al pedido.'}`}
       >
+        {product.imageUrl ? (
+          <span className="product-image"><img src={product.imageUrl} alt="" loading="lazy" /></span>
+        ) : null}
         <div className="product-card-heading">
           {search.trim() || categoryId === 'all' ? <span className="product-category">{product.categoryName}</span> : null}
           <h3>{product.name}</h3>
@@ -283,16 +287,30 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   }
 
   async function handlePaymentConfirm(payload) {
+    const { photos = [], ...payment } = payload;
     await flush();
-    const response = await api.payOrder(order.id, payload);
-    if (response.order.status === 'pagada') {
-      setPaidOrder(response.order);
+    let response = await api.payOrder(order.id, payment);
+    let photoUploadError = '';
+    if (photos.length > 0) {
+      const paymentId = response.order.payments?.at(-1)?.id;
+      if (paymentId) {
+        try {
+          await api.uploadPaymentPhotos(order.id, paymentId, photos);
+          response = await api.getOrder(order.id);
+        } catch (uploadError) {
+          photoUploadError = uploadError.message || 'El pago se registró, pero no se pudo adjuntar el comprobante.';
+        }
+      }
+    }
+    const updatedOrder = { ...response.order, photoUploadError };
+    if (updatedOrder.status === 'pagada') {
+      setPaidOrder(updatedOrder);
       setPaymentOpen(false);
       setCartOpen(false);
     } else {
-      applyServerOrder(response.order);
+      applyServerOrder(updatedOrder);
     }
-    return response.order;
+    return updatedOrder;
   }
 
   async function handleCancelOrder() {
@@ -318,6 +336,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       await flush();
       const response = await api.sendToKitchen(order.id);
       applyServerOrder(response.order);
+      window.dispatchEvent(new CustomEvent('restpos:kitchen-changed'));
       setKitchenNotice(
         response.printWarning
           ? `Comanda enviada. Impresión pendiente: ${response.printWarning}`
@@ -480,7 +499,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
           <div className="ticket-head">
             <div>
               <span className="eyebrow">Cuenta abierta</span>
-              <h2>{cartTitle}</h2>
+              <div className="ticket-title-row">
+                <h2>{cartTitle}</h2>
+                <span className={`service-badge service-${order.serviceType}`}>{serviceShortLabel(order)}</span>
+              </div>
             </div>
             <span className="order-number">{order.orderNumber}</span>
           </div>
@@ -792,6 +814,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         order={order}
         onSetTip={setTip}
         onConfirm={handlePaymentConfirm}
+        onRefresh={async () => {
+          const response = await api.getOrder(order.id);
+          applyServerOrder(response.order);
+        }}
       />
       <ProductModifierModal
         open={Boolean(modifierProduct)}

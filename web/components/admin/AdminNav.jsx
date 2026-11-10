@@ -9,6 +9,7 @@ const TABS = [
   { href: '/admin', label: 'Menú', icon: 'tag', exact: true },
   { href: '/admin/salon', label: 'Salón', icon: 'table' },
   { href: '/admin/modificadores', label: 'Modificadores', icon: 'sliders' },
+  { href: '/admin/pagos', label: 'Pagos', icon: 'card' },
   { href: '/admin/equipo', label: 'Equipo', icon: 'users', adminOnly: true },
   { href: '/admin/ajustes', label: 'Ajustes', icon: 'settings' },
 ];

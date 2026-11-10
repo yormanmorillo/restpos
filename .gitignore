@@ -13,3 +13,5 @@ coverage/
 
 .artifacts/
 .deploy/
+server/data/uploads/
+server/data/test-uploads/

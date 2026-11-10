@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS products (
   price_cents INTEGER NOT NULL CHECK (price_cents >= 0 AND price_cents <= 1000000),
   active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
   sort_order INTEGER NOT NULL DEFAULT 0,
+  image_path TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -55,7 +56,8 @@ CREATE TABLE IF NOT EXISTS orders (
   tip_value INTEGER NOT NULL DEFAULT 0 CHECK (tip_value >= 0),
   tip_cents INTEGER NOT NULL DEFAULT 0 CHECK (tip_cents >= 0),
   total_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
-  payment_method TEXT CHECK (payment_method IN ('efectivo', 'tarjeta', 'otro') OR payment_method IS NULL),
+  payment_method TEXT,
+  payment_method_name TEXT NOT NULL DEFAULT '',
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
   business_date TEXT NOT NULL,
@@ -136,7 +138,9 @@ CREATE TABLE IF NOT EXISTS payments (
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   shift_id INTEGER REFERENCES shifts(id) ON DELETE SET NULL,
   staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
-  payment_method TEXT NOT NULL CHECK (payment_method IN ('efectivo', 'tarjeta', 'otro')),
+  payment_method TEXT NOT NULL,
+  method_name TEXT NOT NULL DEFAULT '',
+  method_kind TEXT NOT NULL DEFAULT 'other',
   amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
@@ -144,6 +148,32 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_order_idx ON payments(order_id);
 CREATE INDEX IF NOT EXISTS payments_shift_idx ON payments(shift_id);
+
+CREATE TABLE IF NOT EXISTS payment_methods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'other' CHECK (kind IN ('cash', 'card', 'transfer', 'other')),
+  icon TEXT NOT NULL DEFAULT 'wallet',
+  allows_photo INTEGER NOT NULL DEFAULT 0 CHECK (allows_photo IN (0, 1)),
+  requires_photo INTEGER NOT NULL DEFAULT 0 CHECK (requires_photo IN (0, 1)),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS payment_methods_active_idx ON payment_methods(active, sort_order, name);
+
+CREATE TABLE IF NOT EXISTS payment_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL UNIQUE,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+  uploaded_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS payment_photos_payment_idx ON payment_photos(payment_id);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
@@ -240,6 +270,128 @@ export function openDatabase(filename) {
   return db;
 }
 
+function tableSql(db, table) {
+  return db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)?.sql ?? '';
+}
+
+function rebuildLegacyPaymentTables(db) {
+  const orderSql = tableSql(db, 'orders');
+  const paymentSql = tableSql(db, 'payments');
+  const legacyOrder = /CHECK\s*\(\s*payment_method\s+IN/i.test(orderSql);
+  const legacyPayment = /CHECK\s*\(\s*payment_method\s+IN/i.test(paymentSql);
+  if (!legacyOrder && !legacyPayment) return;
+
+  db.exec('PRAGMA foreign_keys = OFF;');
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    db.exec(`
+      CREATE TABLE orders_rebuild (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL CHECK (type IN ('mesa', 'llevar')),
+        table_id INTEGER REFERENCES restaurant_tables(id),
+        status TEXT NOT NULL DEFAULT 'abierta' CHECK (status IN ('abierta', 'pagada', 'anulada')),
+        customer_name TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        subtotal_cents INTEGER NOT NULL DEFAULT 0 CHECK (subtotal_cents >= 0),
+        discount_type TEXT NOT NULL DEFAULT 'none' CHECK (discount_type IN ('none', 'percent', 'fixed')),
+        discount_value INTEGER NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
+        discount_cents INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
+        tax_rate_bps INTEGER NOT NULL DEFAULT 1600 CHECK (tax_rate_bps BETWEEN 0 AND 10000),
+        tax_cents INTEGER NOT NULL DEFAULT 0 CHECK (tax_cents >= 0),
+        tip_type TEXT NOT NULL DEFAULT 'none' CHECK (tip_type IN ('none', 'percent', 'fixed')),
+        tip_value INTEGER NOT NULL DEFAULT 0 CHECK (tip_value >= 0),
+        tip_cents INTEGER NOT NULL DEFAULT 0 CHECK (tip_cents >= 0),
+        total_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
+        payment_method TEXT,
+        payment_method_name TEXT NOT NULL DEFAULT '',
+        cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
+        change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
+        business_date TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        paid_at TEXT,
+        cancelled_at TEXT,
+        delivery INTEGER NOT NULL DEFAULT 0 CHECK (delivery IN (0, 1)),
+        customer_phone TEXT NOT NULL DEFAULT '',
+        delivery_address TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'pos',
+        amount_paid_cents INTEGER NOT NULL DEFAULT 0 CHECK (amount_paid_cents >= 0),
+        opened_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+        closed_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+        shift_id INTEGER REFERENCES shifts(id) ON DELETE SET NULL,
+        kitchen_sent_at TEXT,
+        scheduled_for TEXT,
+        delivery_fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (delivery_fee_cents >= 0),
+        CHECK (
+          (type = 'mesa' AND table_id IS NOT NULL) OR
+          (type = 'llevar' AND table_id IS NULL)
+        )
+      );
+
+      INSERT INTO orders_rebuild (
+        id, order_number, type, table_id, status, customer_name, notes,
+        subtotal_cents, discount_type, discount_value, discount_cents,
+        tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
+        payment_method, payment_method_name, cash_received_cents, change_cents,
+        business_date, created_at, updated_at, paid_at, cancelled_at,
+        delivery, customer_phone, delivery_address, source, amount_paid_cents,
+        opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
+        scheduled_for, delivery_fee_cents
+      )
+      SELECT
+        id, order_number, type, table_id, status, customer_name, notes,
+        subtotal_cents, discount_type, discount_value, discount_cents,
+        tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
+        payment_method,
+        COALESCE(payment_method_name, CASE payment_method WHEN 'efectivo' THEN 'Efectivo' WHEN 'tarjeta' THEN 'Tarjeta' ELSE '' END),
+        cash_received_cents, change_cents,
+        business_date, created_at, updated_at, paid_at, cancelled_at,
+        delivery, customer_phone, delivery_address, source, amount_paid_cents,
+        opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
+        scheduled_for, delivery_fee_cents
+      FROM orders;
+    `);
+
+    db.exec(`
+      CREATE TABLE payments_rebuild (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        shift_id INTEGER REFERENCES shifts(id) ON DELETE SET NULL,
+        staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+        payment_method TEXT NOT NULL,
+        method_name TEXT NOT NULL DEFAULT '',
+        method_kind TEXT NOT NULL DEFAULT 'other',
+        amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+        cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
+        change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO payments_rebuild (
+        id, order_id, shift_id, staff_id, payment_method, method_name, method_kind,
+        amount_cents, cash_received_cents, change_cents, created_at
+      )
+      SELECT
+        id, order_id, shift_id, staff_id, payment_method,
+        CASE payment_method WHEN 'efectivo' THEN 'Efectivo' WHEN 'tarjeta' THEN 'Tarjeta' ELSE 'Otro' END,
+        CASE payment_method WHEN 'efectivo' THEN 'cash' WHEN 'tarjeta' THEN 'card' ELSE 'other' END,
+        amount_cents, cash_received_cents, change_cents, created_at
+      FROM payments;
+    `);
+
+    db.exec('DROP TABLE payments;');
+    db.exec('DROP TABLE orders;');
+    db.exec('ALTER TABLE orders_rebuild RENAME TO orders;');
+    db.exec('ALTER TABLE payments_rebuild RENAME TO payments;');
+    db.exec('COMMIT;');
+  } catch (error) {
+    try { db.exec('ROLLBACK;'); } catch {}
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
+  }
+}
+
 export function migrate(db) {
   db.exec(BASE_SCHEMA);
   db.exec(OPERATIONS_SCHEMA);
@@ -259,6 +411,11 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'kitchen_sent_at', 'TEXT');
   ensureColumn(db, 'orders', 'scheduled_for', 'TEXT');
   ensureColumn(db, 'orders', 'delivery_fee_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'orders', 'payment_method_name', "TEXT NOT NULL DEFAULT ''");
+
+  ensureColumn(db, 'products', 'image_path', 'TEXT');
+  ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'payments', 'method_kind', "TEXT NOT NULL DEFAULT 'other'");
 
   ensureColumn(db, 'order_items', 'status', "TEXT NOT NULL DEFAULT 'pending'");
   ensureColumn(db, 'order_items', 'course', 'INTEGER NOT NULL DEFAULT 1');
@@ -266,6 +423,8 @@ export function migrate(db) {
   ensureColumn(db, 'order_items', 'ready_at', 'TEXT');
   ensureColumn(db, 'order_items', 'served_at', 'TEXT');
   ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
+
+  rebuildLegacyPaymentTables(db);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS orders_table_open_idx ON orders(table_id, status);
@@ -277,9 +436,12 @@ export function migrate(db) {
   // Compatibilidad con ventas anteriores a la tabla de pagos.
   db.exec(`
     INSERT INTO payments
-      (order_id, shift_id, staff_id, payment_method, amount_cents, cash_received_cents,
-       change_cents, created_at)
-    SELECT o.id, NULL, NULL, COALESCE(o.payment_method, 'otro'), o.total_cents,
+      (order_id, shift_id, staff_id, payment_method, method_name, method_kind,
+       amount_cents, cash_received_cents, change_cents, created_at)
+    SELECT o.id, NULL, NULL, COALESCE(o.payment_method, 'otro'),
+           COALESCE(NULLIF(o.payment_method_name, ''), CASE o.payment_method WHEN 'efectivo' THEN 'Efectivo' WHEN 'tarjeta' THEN 'Tarjeta' ELSE 'Otro' END),
+           CASE o.payment_method WHEN 'efectivo' THEN 'cash' WHEN 'tarjeta' THEN 'card' ELSE 'other' END,
+           o.total_cents,
            o.cash_received_cents, COALESCE(o.change_cents, 0), COALESCE(o.paid_at, o.created_at)
     FROM orders o
     WHERE o.status = 'pagada'
@@ -290,7 +452,7 @@ export function migrate(db) {
     WHERE status = 'pagada' AND amount_paid_cents = 0;
   `);
 
-  db.exec('PRAGMA user_version = 2;');
+  db.exec('PRAGMA user_version = 3;');
 }
 
 export function transaction(db, fn) {
@@ -430,6 +592,26 @@ export function seedOperationalData(db, { now = new Date().toISOString() } = {})
     );
     for (const [key, value] of Object.entries(SETTINGS_DEFAULTS)) {
       insertSetting.run(key, value, now);
+    }
+
+    const paymentMethodCount = db
+      .prepare('SELECT COUNT(*) AS count FROM payment_methods')
+      .get().count;
+    if (paymentMethodCount === 0) {
+      const insertMethod = db.prepare(`
+        INSERT INTO payment_methods
+          (code, name, kind, icon, allows_photo, requires_photo, active, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
+      `);
+      for (const method of [
+        ['efectivo', 'Efectivo', 'cash', 'cash', 0, 10],
+        ['tarjeta', 'Tarjeta débito/crédito', 'card', 'card', 0, 20],
+        ['sinpe', 'SINPE Móvil', 'transfer', 'phone', 1, 30],
+        ['transferencia', 'Transferencia bancaria', 'transfer', 'wallet', 1, 40],
+        ['otro', 'Otro', 'other', 'receipt', 0, 50],
+      ]) {
+        insertMethod.run(...method, now, now);
+      }
     }
 
     let areaCount = db.prepare('SELECT COUNT(*) AS count FROM areas').get().count;

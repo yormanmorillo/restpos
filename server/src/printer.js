@@ -51,8 +51,8 @@ function rule(width = WIDTH) {
 }
 
 function orderOrigin(order) {
-  if (order.type === 'mesa') return `Mesa: ${order.tableName ?? order.tableId}`;
-  if (order.delivery) return 'PARA LLEVAR / DELIVERY';
+  if (order.type === 'mesa') return `COMER AQUI / ${order.tableName ?? order.tableId}`;
+  if (order.delivery) return 'DELIVERY';
   return 'PARA LLEVAR';
 }
 
@@ -115,7 +115,7 @@ export function buildReceipt(order, { timeZone } = {}) {
   lines.push(rule());
   const payments = order.payments ?? [];
   if (payments.length > 0) {
-    for (const payment of payments) lines.push(line(payment.paymentMethod, money(payment.amountCents)));
+    for (const payment of payments) lines.push(line(payment.paymentMethodName || payment.paymentMethod, money(payment.amountCents)));
     const cash = payments.reduce((sum, payment) => sum + (payment.cashReceivedCents ?? 0), 0);
     const change = payments.reduce((sum, payment) => sum + (payment.changeCents ?? 0), 0);
     if (cash > 0) {

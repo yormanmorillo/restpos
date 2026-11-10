@@ -1,4 +1,7 @@
 import request from 'supertest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { createApp } from '../src/app.js';
 import { openDatabase, migrate, seedDatabase, seedOperationalData } from '../src/db.js';
 import { hashPin } from '../src/auth.js';
@@ -12,6 +15,7 @@ export async function makeContext() {
     taxRateBps: 1600,
     sessionTtlHours: 12,
     cookieSecure: false,
+    uploadsPath: mkdtempSync(path.join(tmpdir(), 'restpos-test-uploads-')),
   };
   const db = openDatabase(':memory:');
   migrate(db);

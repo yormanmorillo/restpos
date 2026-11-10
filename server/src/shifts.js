@@ -46,17 +46,39 @@ export function getShiftSummary(db, shiftId) {
   if (!shift) throw notFound('No se encontró el turno.');
   const totals = db
     .prepare(`
-      SELECT payment_method, COUNT(*) AS payment_count, COALESCE(SUM(amount_cents), 0) AS total_cents
+      SELECT payment_method, method_name, method_kind,
+             COUNT(*) AS payment_count, COALESCE(SUM(amount_cents), 0) AS total_cents
       FROM payments
       WHERE shift_id = ?
-      GROUP BY payment_method
+      GROUP BY payment_method, method_name, method_kind
+      ORDER BY MIN(id)
     `)
     .all(shiftId);
   const methods = { efectivo: 0, tarjeta: 0, otro: 0 };
   const counts = { efectivo: 0, tarjeta: 0, otro: 0 };
+  const methodBreakdown = [];
+  let cashSalesCents = 0;
   for (const row of totals) {
-    methods[row.payment_method] = Number(row.total_cents);
-    counts[row.payment_method] = Number(row.payment_count);
+    const total = Number(row.total_cents);
+    const count = Number(row.payment_count);
+    if (row.method_kind === 'cash') {
+      methods.efectivo += total;
+      counts.efectivo += count;
+      cashSalesCents += total;
+    } else if (row.method_kind === 'card') {
+      methods.tarjeta += total;
+      counts.tarjeta += count;
+    } else {
+      methods.otro += total;
+      counts.otro += count;
+    }
+    methodBreakdown.push({
+      code: row.payment_method,
+      name: row.method_name || row.payment_method,
+      kind: row.method_kind || 'other',
+      totalCents: total,
+      paymentCount: count,
+    });
   }
   const orderCount = Number(
     db.prepare('SELECT COUNT(DISTINCT order_id) AS count FROM payments WHERE shift_id = ?').get(shiftId).count,
@@ -65,17 +87,17 @@ export function getShiftSummary(db, shiftId) {
     db.prepare('SELECT COALESCE(SUM(tip_cents), 0) AS tip FROM orders WHERE shift_id = ? AND status = ?')
       .get(shiftId, 'pagada').tip,
   );
-  const cashSales = methods.efectivo;
-  const expectedCents = Number(shift.opening_cents) + cashSales;
+  const expectedCents = Number(shift.opening_cents) + cashSalesCents;
   return {
     shift: serializeShift(shift),
     totals: {
       ...methods,
+      methods: methodBreakdown,
       orderCount,
       paymentCount: counts.efectivo + counts.tarjeta + counts.otro,
       tipsCents,
       expectedCents,
-      cashSalesCents: cashSales,
+      cashSalesCents,
     },
   };
 }

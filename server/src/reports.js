@@ -30,22 +30,37 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
 
   const paymentRows = db
     .prepare(`
-      SELECT p.payment_method, COUNT(DISTINCT p.order_id) AS order_count,
+      SELECT p.payment_method, p.method_name, p.method_kind,
+             COUNT(DISTINCT p.order_id) AS order_count,
              COALESCE(SUM(p.amount_cents), 0) AS total_cents
       FROM payments p
       JOIN orders o ON o.id = p.order_id
       WHERE o.status = 'pagada' AND o.business_date = ?
-      GROUP BY p.payment_method
+      GROUP BY p.payment_method, p.method_name, p.method_kind
+      ORDER BY MIN(p.id)
     `)
     .all(reportDate);
   const payments = {};
   for (const method of PAYMENT_METHODS) {
-    const row = paymentRows.find((item) => item.payment_method === method);
+    const rows = paymentRows.filter((item) =>
+      method === 'efectivo'
+        ? item.method_kind === 'cash'
+        : method === 'tarjeta'
+          ? item.method_kind === 'card'
+          : !['cash', 'card'].includes(item.method_kind),
+    );
     payments[method] = {
-      orderCount: row ? Number(row.order_count) : 0,
-      totalCents: row ? Number(row.total_cents) : 0,
+      orderCount: rows.reduce((sum, row) => sum + Number(row.order_count), 0),
+      totalCents: rows.reduce((sum, row) => sum + Number(row.total_cents), 0),
     };
   }
+  const paymentMethods = paymentRows.map((row) => ({
+    code: row.payment_method,
+    name: row.method_name || row.payment_method,
+    kind: row.method_kind || 'other',
+    orderCount: Number(row.order_count),
+    totalCents: Number(row.total_cents),
+  }));
 
   const topProducts = db
     .prepare(`
@@ -145,6 +160,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
     totalCollectedCents,
     averageTicketCents: orderCount > 0 ? Math.round(totalCollectedCents / orderCount) : 0,
     payments,
+    paymentMethods,
     topProducts,
     categories,
     staff,
@@ -173,7 +189,9 @@ export function dailyReportCsv(report) {
     ['Costos de entrega', report.deliveryFeesCents / 100],
     [],
     ['Método de pago', 'Pedidos', 'Total'],
-    ...Object.entries(report.payments).map(([method, data]) => [method, data.orderCount, data.totalCents / 100]),
+    ...(report.paymentMethods?.length
+      ? report.paymentMethods.map((method) => [method.name, method.orderCount, method.totalCents / 100])
+      : Object.entries(report.payments).map(([method, data]) => [method, data.orderCount, data.totalCents / 100])),
     [],
     ['Producto', 'Unidades', 'Ingresos'],
     ...report.topProducts.map((item) => [item.productName, item.quantity, item.revenueCents / 100]),

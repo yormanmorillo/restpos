@@ -128,7 +128,7 @@ export default function ReceiptPage() {
           </div>
           <div>
             <span>Servicio</span>
-            <strong>{order.type === 'mesa' ? order.tableName : 'Para llevar'}</strong>
+            <strong>{serviceLabel(order)}</strong>
           </div>
           {order.customerName ? (
             <div className="receipt-meta-wide">
@@ -218,6 +218,14 @@ export default function ReceiptPage() {
             <span>Total</span>
             <strong>{formatMoney(order.totalCents)}</strong>
           </div>
+          {(order.payments ?? []).some((payment) => (payment.photos ?? []).length > 0) ? (
+            <div className="receipt-photo-links no-print">
+              <span>Comprobantes:</span>
+              {(order.payments ?? []).flatMap((payment) => payment.photos ?? []).map((photo, index) => (
+                <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer">Foto {index + 1}</a>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <div className="receipt-rule" />
@@ -228,7 +236,7 @@ export default function ReceiptPage() {
               {(order.payments ?? []).length > 0 ? (
                 (order.payments ?? []).map((payment) => (
                   <div key={payment.id}>
-                    <span>{paymentLabel(payment.paymentMethod)}</span>
+                    <span>{payment.paymentMethodName || paymentLabel(payment.paymentMethod)}</span>
                     <span>{formatMoney(payment.amountCents)}</span>
                   </div>
                 ))

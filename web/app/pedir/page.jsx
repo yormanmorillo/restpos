@@ -207,7 +207,11 @@ export default function PublicOrderPage() {
             <div className="public-product-grid">
               {products.map((product) => (
                 <button key={product.id} type="button" className="public-product-card" onClick={() => selectProduct(product)}>
-                  <div className="public-product-placeholder"><Icon name="leaf" size={28} /></div>
+                  {product.imageUrl ? (
+                    <div className="public-product-media"><img src={product.imageUrl} alt={product.name} loading="lazy" /></div>
+                  ) : (
+                    <div className="public-product-placeholder"><Icon name="leaf" size={28} /></div>
+                  )}
                   <div className="public-product-copy">
                     <span>{product.categoryName}</span>
                     <h3>{product.name}</h3>

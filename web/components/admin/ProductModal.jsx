@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Modal from '@/components/Modal';
 import { centsToInput, parseMoneyToCents } from '@restpos/shared/money';
+import Icon from '@/components/Icon';
+import { compressImage, validateImageFile } from '@/lib/image';
 
 function messageFromError(error) {
   if (error?.details?.fields?.length) {
@@ -20,6 +22,10 @@ export default function ProductModal({ open, product, categories, onClose, onSub
   const [active, setActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [imageError, setImageError] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -31,7 +37,23 @@ export default function ProductModal({ open, product, categories, onClose, onSub
     setActive(product?.active ?? true);
     setSubmitting(false);
     setError('');
+    setImageFile(null);
+    setImagePreview(product?.imageUrl ?? null);
+    setRemoveImage(false);
+    setImageError('');
   }, [open, product, categories]);
+
+  async function selectImage(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const validation = validateImageFile(file);
+    if (validation) { setImageError(validation); return; }
+    setImageError('');
+    const compressed = await compressImage(file);
+    setImageFile(compressed);
+    setImagePreview(URL.createObjectURL(compressed));
+    setRemoveImage(false);
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -75,7 +97,7 @@ export default function ProductModal({ open, product, categories, onClose, onSub
         priceCents,
         sortOrder: orderNumber,
         active,
-      });
+      }, { imageFile, removeImage });
       onClose();
     } catch (submitError) {
       setError(messageFromError(submitError));
@@ -108,6 +130,28 @@ export default function ProductModal({ open, product, categories, onClose, onSub
       }
     >
       <form id="product-form" className="form-grid" onSubmit={handleSubmit}>
+        <div className="field field-full product-image-field">
+          <span className="field-label">Foto del producto <small className="field-hint">opcional</small></span>
+          <div className="product-image-editor">
+            <div className="product-image-preview">
+              {imagePreview ? <img src={imagePreview} alt="Vista previa del producto" /> : <Icon name="tag" size={28} />}
+            </div>
+            <div className="product-image-actions">
+              <label className="btn btn-small btn-secondary">
+                <Icon name="plus" size={16} /> {imagePreview ? 'Cambiar foto' : 'Agregar foto'}
+                <input type="file" accept="image/*" onChange={(event) => void selectImage(event)} />
+              </label>
+              {imagePreview ? (
+                <button type="button" className="text-button text-danger" onClick={() => { setImageFile(null); setImagePreview(null); setRemoveImage(true); }}>
+                  Quitar foto
+                </button>
+              ) : null}
+              <span className="field-hint">JPG, PNG o WebP · se optimiza automáticamente.</span>
+              {imageError ? <p className="field-error">{imageError}</p> : null}
+            </div>
+          </div>
+        </div>
+
         <label className="field field-full">
           <span className="field-label">Nombre del producto</span>
           <input

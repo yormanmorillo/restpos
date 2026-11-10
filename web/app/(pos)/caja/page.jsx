@@ -5,13 +5,15 @@ import Icon from '@/components/Icon';
 import Modal from '@/components/Modal';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { api } from '@/lib/api';
-import { formatMoney, formatTime } from '@/lib/format';
+import { formatMoney, formatTime, serviceLabel } from '@/lib/format';
+import KitchenQueue from '@/components/KitchenQueue';
 import { parseMoneyToCents, centsToInput } from '@restpos/shared/money';
 
 export default function CashPage() {
   const { staff } = useAuth();
   const [current, setCurrent] = useState(null);
   const [history, setHistory] = useState([]);
+  const [openOrders, setOpenOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -26,12 +28,14 @@ export default function CashPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [currentResponse, historyResponse] = await Promise.all([
+      const [currentResponse, historyResponse, ordersResponse] = await Promise.all([
         api.getCurrentShift(),
         api.getShifts(),
+        api.getOrders({ status: 'abierta', limit: 100 }),
       ]);
       setCurrent(currentResponse.shift ? currentResponse : null);
       setHistory(historyResponse.shifts ?? []);
+      setOpenOrders(ordersResponse.orders ?? []);
       setError('');
     } catch (loadError) {
       setError(loadError.message || 'No se pudo cargar la caja.');
@@ -173,6 +177,20 @@ export default function CashPage() {
             </div>
             <p className="cash-hint"><Icon name="note" size={15} /> Al cerrar, captura el efectivo contado. La diferencia se registra para auditoría.</p>
           </div>
+          <div className="panel cash-detail payment-breakdown-panel">
+            <div className="panel-heading"><div><h2>Pagos del turno</h2><p>Desglose por método</p></div></div>
+            {(current.totals.methods ?? []).length === 0 ? <p className="field-hint">Todavía no hay pagos en este turno.</p> : (
+              <div className="payment-breakdown-list">
+                {(current.totals.methods ?? []).map((method) => (
+                  <div key={method.code} className="payment-breakdown-row">
+                    <span className={`method-icon method-${method.kind}`}><Icon name={method.kind === 'cash' ? 'cash' : method.kind === 'card' ? 'card' : method.kind === 'transfer' ? 'phone' : 'wallet'} size={16} /></span>
+                    <div><strong>{method.name}</strong><span>{method.paymentCount} pagos</span></div>
+                    <strong>{formatMoney(method.totalCents)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       ) : (
         <div className="empty-panel cash-empty">
@@ -184,6 +202,30 @@ export default function CashPage() {
           </button>
         </div>
       )}
+
+      <section className="panel open-orders-panel" aria-labelledby="open-orders-title">
+        <div className="panel-heading">
+          <div><h2 id="open-orders-title">Cuentas abiertas</h2><p>Comer aquí, para llevar y delivery</p></div>
+          <div className="service-legend"><span className="service-dot service-dine_in" /> Comer aquí <span className="service-dot service-takeaway" /> Para llevar <span className="service-dot service-delivery" /> Delivery</div>
+        </div>
+        {openOrders.length === 0 ? (
+          <div className="open-orders-empty"><Icon name="receipt" size={22} /><span>No hay cuentas abiertas en este momento.</span></div>
+        ) : (
+          <div className="open-orders-list">
+            {openOrders.map((order) => (
+              <div key={order.id} className="open-order-row">
+                <span className={`service-badge service-${order.serviceType}`}>{serviceLabel(order)}</span>
+                <div className="open-order-main"><strong>{order.orderNumber}</strong><span>{order.customerName || (order.itemCount ? `${order.itemCount} artículos` : 'Sin artículos')}</span></div>
+                <div className="open-order-money"><span>Total</span><strong>{formatMoney(order.totalCents)}</strong></div>
+                <div className="open-order-money"><span>Saldo</span><strong className={order.balanceCents > 0 ? 'text-danger' : 'text-success'}>{formatMoney(order.balanceCents)}</strong></div>
+                <a href={`/?order=${order.id}`} className="text-button">Cobrar en POS <Icon name="chevronRight" size={15} /></a>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <KitchenQueue compact title="Cocina · platillos en curso" />
 
       {history.length > 0 ? (
         <section className="panel shift-history">

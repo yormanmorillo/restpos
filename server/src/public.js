@@ -3,7 +3,8 @@ import { getCatalog } from './catalog.js';
 import { createOrder, updateOrderDraft, cancelOrder } from './orders.js';
 import { getBooleanSetting, getSetting, publicFeatures } from './settings.js';
 import { parseOrThrow, publicOrderSchema } from './validation.js';
-import { AppError, conflict } from './errors.js';
+import { AppError, conflict, notFound } from './errors.js';
+import { imageFilePath } from './uploads.js';
 
 const attempts = new Map();
 const WINDOW_MS = 10 * 60 * 1000;
@@ -24,6 +25,15 @@ function rateLimit(req) {
 }
 
 export function registerPublicRoutes(router, db, config) {
+  router.get('/public/product-images/:filename', (req, res, next) => {
+    const file = imageFilePath(config.uploadsPath, 'products', req.params.filename);
+    if (!file) return next(notFound('No se encontró la imagen.'));
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    return res.sendFile(file, (error) => {
+      if (error && !res.headersSent) next(error);
+    });
+  });
+
   router.get('/public/restaurant', (req, res) => {
     const features = publicFeatures(db);
     if (!getBooleanSetting(db, 'online_ordering_enabled', false)) {
@@ -50,6 +60,7 @@ export function registerPublicRoutes(router, db, config) {
             name: product.name,
             description: product.description,
             priceCents: product.priceCents,
+            imageUrl: product.imageUrl ?? null,
             modifierGroups: product.modifierGroups ?? [],
           })),
       }))

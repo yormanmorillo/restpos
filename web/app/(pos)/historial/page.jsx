@@ -8,6 +8,7 @@ import {
   formatMoney,
   formatTime,
   paymentLabel,
+  serviceLabel,
   pluralize,
 } from '@/lib/format';
 
@@ -251,18 +252,21 @@ export default function HistoryPage() {
                 </div>
               </div>
               <div className="payment-breakdown">
-                {Object.entries(report.payments).map(([method, data]) => {
-                  const icons = { efectivo: 'cash', tarjeta: 'card', otro: 'wallet' };
+                {(report.paymentMethods?.length
+                  ? report.paymentMethods.map((method) => ({ method, data: method, dynamic: true }))
+                  : Object.entries(report.payments).map(([method, data]) => ({ method, data, dynamic: false }))
+                ).map(({ method, data, dynamic }) => {
+                  const code = dynamic ? method.code : method;
+                  const kind = dynamic ? method.kind : method;
+                  const icons = { efectivo: 'cash', cash: 'cash', tarjeta: 'card', card: 'card', transfer: 'phone', otro: 'wallet', other: 'wallet' };
                   return (
-                    <div key={method} className="payment-breakdown-row">
-                      <span className={`payment-breakdown-icon method-${method}`}>
-                        <Icon name={icons[method] ?? 'wallet'} size={20} />
+                    <div key={code} className="payment-breakdown-row">
+                      <span className={`payment-breakdown-icon method-${kind}`}>
+                        <Icon name={icons[kind] ?? 'wallet'} size={20} />
                       </span>
                       <div>
-                        <strong>{paymentLabel(method)}</strong>
-                        <span>
-                          {data.orderCount} {pluralize(data.orderCount, 'pedido', 'pedidos')}
-                        </span>
+                        <strong>{dynamic ? method.name : paymentLabel(method)}</strong>
+                        <span>{data.orderCount} {pluralize(data.orderCount, 'pedido', 'pedidos')}</span>
                       </div>
                       <strong>{formatMoney(data.totalCents)}</strong>
                     </div>
@@ -381,11 +385,11 @@ export default function HistoryPage() {
                           <strong>{order.orderNumber}</strong>
                           {order.customerName ? <span className="table-subtext">{order.customerName}</span> : null}
                         </td>
-                        <td>{order.type === 'mesa' ? order.tableName : 'Para llevar'}</td>
+                        <td>{serviceLabel(order)}</td>
                         <td>{order.itemCount}</td>
                         <td>
-                          <span className={`method-pill method-${order.paymentMethod}`}>
-                            {paymentLabel(order.paymentMethod)}
+                          <span className={`method-pill method-${order.paymentMethodKind || order.paymentMethod}`}>
+                            {order.paymentMethodName || paymentLabel(order.paymentMethod)}
                           </span>
                         </td>
                         <td className="align-right amount-cell">{formatMoney(order.totalCents)}</td>

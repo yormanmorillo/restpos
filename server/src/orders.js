@@ -8,6 +8,7 @@ import { resolveSelectedModifiers } from './modifiers.js';
 import { requireOpenShiftForPayment } from './shifts.js';
 import { audit } from './audit.js';
 import { getSetting } from './settings.js';
+import { resolveActivePaymentMethod } from './payment-methods.js';
 
 const ORDER_SELECT = `
   SELECT o.*, t.name AS table_name, a.name AS area_name, a.id AS area_id
@@ -53,15 +54,28 @@ function loadItems(db, orderId) {
 }
 
 function loadPayments(db, orderId) {
-  return db
+  const payments = db
     .prepare(`
-      SELECT p.*, st.name AS staff_name
+      SELECT p.*, st.name AS staff_name,
+             (SELECT COUNT(*) FROM payment_photos pp WHERE pp.payment_id = p.id) AS photo_count
       FROM payments p
       LEFT JOIN staff st ON st.id = p.staff_id
       WHERE p.order_id = ?
       ORDER BY p.created_at, p.id
     `)
     .all(orderId);
+  if (payments.length === 0) return payments;
+  const placeholders = payments.map(() => '?').join(',');
+  const photos = db
+    .prepare(`SELECT * FROM payment_photos WHERE payment_id IN (${placeholders}) ORDER BY id`)
+    .all(...payments.map((payment) => payment.id));
+  const byPayment = new Map();
+  for (const photo of photos) {
+    const paymentId = Number(photo.payment_id);
+    if (!byPayment.has(paymentId)) byPayment.set(paymentId, []);
+    byPayment.get(paymentId).push(photo);
+  }
+  return payments.map((payment) => ({ ...payment, photos: byPayment.get(Number(payment.id)) ?? [] }));
 }
 
 export function getOrder(db, id) {
@@ -429,6 +443,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       throw conflict('El total actual es menor a lo ya pagado.');
     }
 
+    const paymentMethod = resolveActivePaymentMethod(db, input.paymentMethod);
     const shift = requireOpenShiftForPayment(db);
     const alreadyPaid = Number(raw.amount_paid_cents || 0);
     const balance = totals.totalCents - alreadyPaid;
@@ -445,7 +460,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
 
     let cashReceivedCents = null;
     let changeCents = 0;
-    if (input.paymentMethod === 'efectivo') {
+    if (paymentMethod.kind === 'cash') {
       cashReceivedCents = input.cashReceivedCents ?? amountCents;
       if (!Number.isInteger(cashReceivedCents) || cashReceivedCents < amountCents) {
         throw unprocessable('El efectivo recibido no cubre el monto del pago.', {
@@ -460,14 +475,16 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     const timestamp = now.toISOString();
     db.prepare(`
       INSERT INTO payments
-        (order_id, shift_id, staff_id, payment_method, amount_cents,
-         cash_received_cents, change_cents, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (order_id, shift_id, staff_id, payment_method, method_name, method_kind,
+         amount_cents, cash_received_cents, change_cents, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       shift?.id ?? null,
       staffId,
-      input.paymentMethod,
+      paymentMethod.code,
+      paymentMethod.name,
+      paymentMethod.kind,
       amountCents,
       cashReceivedCents,
       changeCents,
@@ -487,6 +504,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
         amount_paid_cents = ?,
         subtotal_cents = ?, discount_cents = ?, tax_cents = ?, tip_cents = ?, total_cents = ?,
         payment_method = ?,
+        payment_method_name = ?,
         cash_received_cents = ?,
         change_cents = ?,
         business_date = ?,
@@ -499,7 +517,8 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       totals.taxCents,
       totals.tipCents,
       totals.totalCents,
-      input.paymentMethod,
+      paymentMethod.code,
+      paymentMethod.name,
       Number(cashTotals.cash_received) > 0 ? Number(cashTotals.cash_received) : null,
       cashTotals.change_total,
       businessDateFor(now, config.timezone),
@@ -524,7 +543,8 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
 
     audit(db, staffId, closesOrder ? 'order.pay' : 'order.partial_payment', 'order', id, {
       amountCents,
-      paymentMethod: input.paymentMethod,
+      paymentMethod: paymentMethod.code,
+      paymentMethodName: paymentMethod.name,
       newPaid,
       totalCents: totals.totalCents,
       shiftId: shift?.id ?? null,

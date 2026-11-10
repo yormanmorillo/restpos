@@ -86,17 +86,38 @@ export default function AdminPage() {
   const activeProducts = products.filter((product) => product.active).length;
   const activeCategories = categories.filter((category) => category.active).length;
 
-  async function saveProduct(payload) {
+  async function saveProduct(payload, imageAction = {}) {
+    let saved;
     if (productModal.product) {
       const response = await api.updateProduct(productModal.product.id, payload);
-      setProducts((previous) =>
-        previous.map((product) => (product.id === response.product.id ? response.product : product)),
-      );
-      setToast({ type: 'success', message: `Producto “${response.product.name}” actualizado.` });
+      saved = response.product;
     } else {
       const response = await api.createProduct(payload);
-      setProducts((previous) => [...previous, response.product]);
-      setToast({ type: 'success', message: `Producto “${response.product.name}” creado.` });
+      saved = response.product;
+    }
+    let imageWarning = '';
+    if (imageAction.imageFile) {
+      try {
+        const imageResponse = await api.uploadProductImage(saved.id, imageAction.imageFile);
+        saved = imageResponse.product;
+      } catch (imageError) {
+        imageWarning = imageError.message || 'No se pudo subir la foto.';
+      }
+    } else if (imageAction.removeImage && saved.imageUrl) {
+      try {
+        await api.deleteProductImage(saved.id);
+        saved = { ...saved, imageUrl: null };
+      } catch (imageError) {
+        imageWarning = imageError.message || 'No se pudo quitar la foto.';
+      }
+    }
+    if (imageWarning) setToast({ type: 'error', message: imageWarning });
+    if (productModal.product) {
+      setProducts((previous) => previous.map((product) => (product.id === saved.id ? saved : product)));
+      setToast({ type: 'success', message: `Producto “${saved.name}” actualizado.` });
+    } else {
+      setProducts((previous) => [...previous, saved]);
+      setToast({ type: 'success', message: `Producto “${saved.name}” creado.` });
     }
   }
 
@@ -265,12 +286,15 @@ export default function AdminPage() {
               {filteredProducts.map((product) => (
                 <article key={product.id} className={`admin-row admin-product-row ${product.active ? '' : 'is-inactive'}`}>
                   <div className="admin-product-main">
+                    {product.imageUrl ? <img className="admin-product-thumb" src={product.imageUrl} alt="" /> : null}
+                    <div className="admin-product-copy">
                     <div className="admin-product-tags">
                       <span className="category-tag">{product.categoryName}</span>
                       <StatusBadge active={product.active} />
                     </div>
                     <h3>{product.name}</h3>
                     {product.description ? <p>{product.description}</p> : null}
+                    </div>
                   </div>
                   <div className="admin-product-price">
                     <span>Precio</span>

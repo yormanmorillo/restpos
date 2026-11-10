@@ -26,9 +26,16 @@ function readTimezone() {
 }
 
 export function loadConfig(overrides = {}) {
+  const databasePath = process.env.DATABASE_PATH || defaultDatabasePath;
+  const uploadsPath =
+    process.env.UPLOAD_DIR ||
+    (databasePath === ':memory:'
+      ? path.join(serverRoot, 'data', 'test-uploads')
+      : path.join(path.dirname(databasePath), 'uploads'));
   return {
     port: readInteger('PORT', 4000, { min: 1, max: 65535 }),
-    databasePath: process.env.DATABASE_PATH || defaultDatabasePath,
+    databasePath,
+    uploadsPath,
     timezone: readTimezone(),
     currency: 'MXN',
     taxRateBps: readInteger('TAX_RATE_BPS', DEFAULT_TAX_RATE_BPS, { min: 0, max: 10000 }),

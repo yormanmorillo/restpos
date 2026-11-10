@@ -1,5 +1,7 @@
 import express from 'express';
-import { AppError } from './errors.js';
+import multer from 'multer';
+import { AppError, notFound, validationError } from './errors.js';
+import { audit } from './audit.js';
 import {
   registerAuthRoutes,
   authenticate,
@@ -30,6 +32,8 @@ import {
   parseOrThrow,
   assertValidDate,
   idParamsSchema,
+  photoIdParamsSchema,
+  orderPaymentParamsSchema,
   createOrderSchema,
   draftSchema,
   payOrderSchema,
@@ -53,8 +57,35 @@ import {
   modifierGroupCreateSchema,
   modifierGroupUpdateSchema,
   productModifierGroupsSchema,
+  paymentMethodCreateSchema,
+  paymentMethodUpdateSchema,
 } from './validation.js';
 import { listAreas, createArea, updateArea, listAdminTables, createTable, updateTable } from './areas.js';
+import { listPaymentMethods, createPaymentMethod, updatePaymentMethod, findPaymentMethod } from './payment-methods.js';
+import { serializeProduct } from './serializers.js';
+import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 6 * 1024 * 1024, files: 4 },
+  fileFilter: (req, file, callback) => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      callback(new AppError(422, 'INVALID_IMAGE', 'La imagen debe ser JPG, PNG o WebP.'));
+      return;
+    }
+    callback(null, true);
+  },
+});
+
+function serializePaymentPhoto(photo) {
+  return {
+    id: Number(photo.id),
+    url: `/api/payment-photos/${photo.id}`,
+    mimeType: photo.mime_type,
+    sizeBytes: Number(photo.size_bytes),
+    createdAt: photo.created_at,
+  };
+}
 
 export function createApp({ db, config }) {
   const app = express();
@@ -143,6 +174,84 @@ export function createApp({ db, config }) {
     res.json({ settings: updateSettings(db, input.settings) });
   });
 
+  api.get('/payment-methods', (req, res) => {
+    res.json({ methods: listPaymentMethods(db) });
+  });
+
+  api.post('/payment-methods', requireRoles('admin', 'manager'), (req, res) => {
+    const input = parseOrThrow(paymentMethodCreateSchema, req.body);
+    res.status(201).json({ method: createPaymentMethod(db, input, req.staff.id) });
+  });
+
+  api.patch('/payment-methods/:id', requireRoles('admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(paymentMethodUpdateSchema, req.body);
+    res.json({ method: updatePaymentMethod(db, id, input, req.staff.id) });
+  });
+
+  api.get('/payment-photos/:photoId', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res, next) => {
+    const { photoId } = parseOrThrow(photoIdParamsSchema, req.params);
+    const photo = db.prepare('SELECT * FROM payment_photos WHERE id = ?').get(photoId);
+    if (!photo) return next(notFound('No se encontró el comprobante.'));
+    const file = imageFilePath(config.uploadsPath, 'payments', photo.filename);
+    if (!file) return next(notFound('No se encontró el archivo del comprobante.'));
+    res.setHeader('Content-Type', photo.mime_type);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.sendFile(file, (error) => {
+      if (error && !res.headersSent) next(error);
+    });
+  });
+
+  api.post('/orders/:id/payments/:paymentId/photos', requireRoles('admin', 'manager', 'cashier', 'server'), upload.array('photos', 4), (req, res) => {
+    const { id, paymentId } = parseOrThrow(orderPaymentParamsSchema, req.params);
+    const payment = db.prepare('SELECT * FROM payments WHERE id = ? AND order_id = ?').get(paymentId, id);
+    if (!payment) throw notFound('No se encontró el pago.');
+    const method = findPaymentMethod(db, payment.payment_method);
+    if (!method?.allowsPhoto) {
+      throw validationError('Este método de pago no permite adjuntar comprobantes.');
+    }
+    if (!req.files || req.files.length === 0) {
+      throw validationError('Selecciona al menos una foto.');
+    }
+    const currentCount = Number(
+      db.prepare('SELECT COUNT(*) AS count FROM payment_photos WHERE payment_id = ?').get(paymentId).count,
+    );
+    if (currentCount + req.files.length > 6) {
+      throw validationError('Puedes adjuntar hasta 6 fotos por pago.');
+    }
+    const inserted = [];
+    const now = new Date().toISOString();
+    for (const file of req.files) {
+      const filename = saveImageFile(file, config.uploadsPath, 'payments');
+      const result = db.prepare(`
+        INSERT INTO payment_photos
+          (payment_id, filename, mime_type, size_bytes, uploaded_by_staff_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(paymentId, filename, file.mimetype, file.size, req.staff.id, now);
+      inserted.push(serializePaymentPhoto({
+        id: result.lastInsertRowid,
+        mime_type: file.mimetype,
+        size_bytes: file.size,
+        created_at: now,
+      }));
+    }
+    audit(db, req.staff.id, 'payment.photos.upload', 'payment', Number(paymentId), {
+      orderId: Number(id),
+      count: inserted.length,
+    });
+    res.status(201).json({ photos: inserted });
+  });
+
+  api.delete('/payment-photos/:photoId', requireRoles('admin', 'manager'), (req, res) => {
+    const { photoId } = parseOrThrow(photoIdParamsSchema, req.params);
+    const photo = db.prepare('SELECT * FROM payment_photos WHERE id = ?').get(photoId);
+    if (!photo) throw notFound('No se encontró el comprobante.');
+    db.prepare('DELETE FROM payment_photos WHERE id = ?').run(photoId);
+    removeImageFile(config.uploadsPath, 'payments', photo.filename);
+    audit(db, req.staff.id, 'payment.photos.delete', 'payment', Number(photo.payment_id), { photoId: Number(photoId) });
+    res.json({ success: true });
+  });
+
   api.get('/areas', (req, res) => {
     res.json({ areas: listAreas(db) });
   });
@@ -218,17 +327,17 @@ export function createApp({ db, config }) {
     res.json({ success: true });
   });
 
-  api.get('/kitchen/orders', requireRoles('admin', 'manager', 'kitchen'), (req, res) => {
+  api.get('/kitchen/orders', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
     res.json({ tickets: getKitchenTickets(db) });
   });
 
-  api.patch('/kitchen/items/:id', requireRoles('admin', 'manager', 'kitchen'), (req, res) => {
+  api.patch('/kitchen/items/:id', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(kitchenItemUpdateSchema, req.body);
     res.json({ result: updateKitchenItem(db, id, input.status, req.staff.id) });
   });
 
-  api.patch('/kitchen/orders/:id', requireRoles('admin', 'manager', 'kitchen'), (req, res) => {
+  api.patch('/kitchen/orders/:id', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(kitchenTicketUpdateSchema, req.body);
     res.json({ order: updateKitchenTicket(db, id, input.status, req.staff.id) });
@@ -333,6 +442,43 @@ export function createApp({ db, config }) {
     res.json({ product: updateProduct(db, id, input) });
   });
 
+  api.post('/admin/products/:id/image', requireRoles('admin', 'manager'), upload.single('image'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const existing = db
+      .prepare(`
+        SELECT p.*, c.name AS category_name
+        FROM products p JOIN categories c ON c.id = p.category_id
+        WHERE p.id = ?
+      `)
+      .get(id);
+    if (!existing) throw notFound('No se encontró el producto.');
+    if (!req.file) throw validationError('Selecciona una imagen.');
+    const filename = saveImageFile(req.file, config.uploadsPath, 'products');
+    db.prepare('UPDATE products SET image_path = ?, updated_at = ? WHERE id = ?')
+      .run(filename, new Date().toISOString(), id);
+    if (existing.image_path) removeImageFile(config.uploadsPath, 'products', existing.image_path);
+    audit(db, req.staff.id, 'product.image.upload', 'product', Number(id), { filename });
+    const updated = db
+      .prepare(`
+        SELECT p.*, c.name AS category_name
+        FROM products p JOIN categories c ON c.id = p.category_id
+        WHERE p.id = ?
+      `)
+      .get(id);
+    res.json({ product: serializeProduct(updated) });
+  });
+
+  api.delete('/admin/products/:id/image', requireRoles('admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    if (!existing) throw notFound('No se encontró el producto.');
+    db.prepare("UPDATE products SET image_path = NULL, updated_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), id);
+    if (existing.image_path) removeImageFile(config.uploadsPath, 'products', existing.image_path);
+    audit(db, req.staff.id, 'product.image.delete', 'product', Number(id), {});
+    res.json({ success: true });
+  });
+
   api.use((req, res) => {
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: 'Ruta de API no encontrada.' },
@@ -358,6 +504,15 @@ export function createApp({ db, config }) {
           ...(error.details !== undefined ? { details: error.details } : {}),
         },
       });
+    }
+
+    if (error instanceof multer.MulterError) {
+      const message = error.code === 'LIMIT_FILE_SIZE'
+        ? 'Cada imagen debe pesar menos de 6 MB.'
+        : error.code === 'LIMIT_FILE_COUNT'
+          ? 'Puedes subir hasta 4 imágenes por solicitud.'
+          : 'No se pudo procesar la imagen.';
+      return res.status(413).json({ error: { code: 'UPLOAD_ERROR', message } });
     }
 
     if (error?.type === 'entity.too.large') {

@@ -5,6 +5,8 @@ export { formatMoney };
 const PAYMENT_LABELS = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
+  sinpe: 'SINPE Móvil',
+  transferencia: 'Transferencia bancaria',
   otro: 'Otro',
 };
 
@@ -41,4 +43,30 @@ export function productQtyInOrder(order, productId) {
   return order.items
     .filter((item) => item.productId === productId)
     .reduce((sum, item) => sum + item.quantity, 0);
+}
+
+export function serviceLabel(order) {
+  if (!order) return '';
+  if (order.serviceType === 'delivery' || order.delivery) return 'Delivery';
+  if (order.serviceType === 'dine_in' || order.type === 'mesa') {
+    return order.tableName ? `Comer aquí · ${order.tableName}` : 'Comer aquí';
+  }
+  return 'Para llevar';
+}
+
+export function serviceShortLabel(order) {
+  if (!order) return '';
+  if (order.serviceType === 'delivery' || order.delivery) return 'Delivery';
+  if (order.serviceType === 'dine_in' || order.type === 'mesa') return 'Comer aquí';
+  return 'Para llevar';
+}
+
+export function statusLabel(status) {
+  return {
+    pending: 'Por enviar',
+    sent: 'Enviado',
+    preparing: 'Preparando',
+    ready: 'Listo',
+    served: 'Servido',
+  }[status] ?? status;
 }

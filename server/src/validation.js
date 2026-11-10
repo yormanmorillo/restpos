@@ -28,6 +28,15 @@ export const idParamsSchema = z.object({
   id: z.coerce.number().int().positive('El identificador debe ser un entero positivo.'),
 });
 
+export const photoIdParamsSchema = z.object({
+  photoId: z.coerce.number().int().positive('El identificador del comprobante no es válido.'),
+});
+
+export const orderPaymentParamsSchema = z.object({
+  id: z.coerce.number().int().positive('El identificador del pedido no es válido.'),
+  paymentId: z.coerce.number().int().positive('El identificador del pago no es válido.'),
+});
+
 export const createOrderSchema = z
   .object({
     type: z.enum(['mesa', 'llevar'], { error: 'El tipo de pedido debe ser "mesa" o "llevar".' }),
@@ -59,13 +68,6 @@ export const createOrderSchema = z
         code: 'custom',
         path: ['delivery'],
         message: 'Solo un pedido para llevar puede ser a domicilio.',
-      });
-    }
-    if (value.delivery && !value.deliveryAddress) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['deliveryAddress'],
-        message: 'La dirección de entrega es obligatoria.',
       });
     }
   });
@@ -135,9 +137,10 @@ export const draftSchema = z
   });
 
 export const payOrderSchema = z.object({
-  paymentMethod: z.enum(['efectivo', 'tarjeta', 'otro'], {
-    error: 'Selecciona un método de pago válido.',
-  }),
+  paymentMethod: z
+    .string({ error: 'Selecciona un método de pago.' })
+    .trim()
+    .regex(/^[a-z0-9_]{2,40}$/, 'Selecciona un método de pago válido.'),
   cashReceivedCents: z
     .number({ error: 'El efectivo recibido debe ser un número entero en centavos.' })
     .int('El efectivo recibido debe expresarse en centavos.')
@@ -352,5 +355,30 @@ export const tableUpdateSchema = z
     areaId: z.number().int().positive().nullable().optional(),
     position: z.number().int().min(0).max(9999).optional(),
     active: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');
+
+
+export const paymentMethodCreateSchema = z.object({
+  code: z.string().trim().regex(/^[a-z0-9_]{2,40}$/, 'El código no es válido.'),
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(60),
+  kind: z.enum(['cash', 'card', 'transfer', 'other']),
+  icon: z.string().trim().max(30).optional().default('wallet'),
+  allowsPhoto: z.boolean().optional().default(false),
+  requiresPhoto: z.boolean().optional().default(false),
+  active: z.boolean().optional().default(true),
+  sortOrder: z.number().int().min(0).max(9999).optional().default(0),
+});
+
+export const paymentMethodUpdateSchema = z
+  .object({
+    code: z.string().trim().regex(/^[a-z0-9_]{2,40}$/, 'El código no es válido.').optional(),
+    name: z.string().trim().min(1).max(60).optional(),
+    kind: z.enum(['cash', 'card', 'transfer', 'other']).optional(),
+    icon: z.string().trim().max(30).optional(),
+    allowsPhoto: z.boolean().optional(),
+    requiresPhoto: z.boolean().optional(),
+    active: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(9999).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');

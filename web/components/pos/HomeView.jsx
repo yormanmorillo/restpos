@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Icon from '@/components/Icon';
+import KitchenQueue from '@/components/KitchenQueue';
 import { formatMoney, formatTime, pluralize } from '@/lib/format';
 
 function TableCard({ table, onOpen, disabled, timeZone }) {
@@ -72,6 +73,7 @@ export default function HomeView({
   onNewTakeaway,
   onNewDelivery,
   onOpenTakeaway,
+  onOpenKitchenOrder,
   timeZone,
 }) {
   const [areaFilter, setAreaFilter] = useState('all');
@@ -137,7 +139,7 @@ export default function HomeView({
 
       <section className="tables-section" aria-labelledby="tables-title">
         <div className="section-heading">
-          <h2 id="tables-title">Salón</h2>
+          <h2 id="tables-title">Salón · Comer aquí</h2>
           <span className="section-hint">Toca una mesa para abrir su cuenta</span>
         </div>
         {areas.length > 1 ? (
@@ -167,9 +169,11 @@ export default function HomeView({
         </div>
       </section>
 
+      <KitchenQueue compact title="Cocina en curso" onOpenOrder={onOpenKitchenOrder} />
+
       <section className="takeaway-section" aria-labelledby="takeaway-title">
         <div className="section-heading">
-          <h2 id="takeaway-title">Pedidos para llevar</h2>
+          <h2 id="takeaway-title">Para llevar y delivery</h2>
           <span className="section-hint">{takeawayOrders.length} {takeawayOrders.length === 1 ? 'abierto' : 'abiertos'}</span>
         </div>
         {takeawayOrders.length === 0 ? (
