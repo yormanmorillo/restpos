@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 import { api } from '@/lib/api';
@@ -21,7 +21,6 @@ function initials(name = '') {
 
 export default function AppHeader() {
   const pathname = usePathname();
-  const router = useRouter();
   const { staff, logout } = useAuth();
   const [now, setNow] = useState(null);
   const [accountOpen, setAccountOpen] = useState(false);
