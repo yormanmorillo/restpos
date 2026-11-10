@@ -41,6 +41,7 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 COPY --from=web-build --chown=node:node /app/web/.next/standalone ./
 COPY --from=web-build --chown=node:node /app/web/.next/static ./web/.next/static
+COPY --from=web-build --chown=node:node /app/web/public ./web/public
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
