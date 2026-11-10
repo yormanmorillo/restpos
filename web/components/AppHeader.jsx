@@ -114,7 +114,7 @@ export default function AppHeader() {
             >
               <span className="avatar avatar-small">{initials(staff.name)}</span>
               <span className="account-copy">
-                <strong>{staff.name.split(' ')[0]}</strong>
+                <strong>{staff.name}</strong>
                 <small>{ROLE_LABELS[staff.role] ?? staff.role}</small>
               </span>
               <Icon name="chevronDown" size={16} />

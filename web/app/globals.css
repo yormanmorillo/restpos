@@ -4251,8 +4251,8 @@ h1 { font-weight: 700; }
 /* Header */
 .app-header {
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.93);
-  backdrop-filter: blur(20px) saturate(1.2);
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(20, 20, 18, 0.02);
 }
 .app-header-inner {
   min-height: var(--header-height);
@@ -4816,6 +4816,9 @@ h1 { font-weight: 700; }
 .settings-subgroup { display: flex; flex-direction: column; gap: 8px; padding: 9px 11px; border-radius: 10px; background: var(--surface-soft); }
 .settings-toggle { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .settings-toggle.is-disabled { opacity: 0.42; pointer-events: none; }
+.settings-toggle input:checked + .toggle-track { background: var(--ink); }
+.settings-toggle input:checked + .toggle-track span { transform: translateX(18px); }
+.settings-toggle input:focus-visible + .toggle-track { outline: 3px solid rgba(232, 90, 54, 0.35); outline-offset: 2px; }
 .settings-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .settings-toggle > span:last-child { display: flex; flex-direction: column; gap: 2px; }
 .settings-toggle strong { font-size: 0.8rem; }
