@@ -4,7 +4,7 @@ Sistema de punto de venta para restaurante con diseño táctil moderno, inspirad
 
 Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** (`node:sqlite`), sin servicios externos obligatorios.
 
-![Pantalla de pedido del POS](docs/captura-pos.png)
+![Panel de mesas, servicio y cocina del POS](docs/captura-pos.png)
 
 ## Funcionalidad
 
