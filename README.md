@@ -4,7 +4,7 @@ Sistema de punto de venta para restaurante con diseño táctil moderno, inspirad
 
 Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** (`node:sqlite`), sin servicios externos obligatorios.
 
-![Panel de mesas, servicio y cocina del POS](docs/captura-pos.png)
+![POS de una sola pantalla con cocina lateral](docs/captura-pos.png)
 
 ## Funcionalidad
 
@@ -31,7 +31,7 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Pantalla `/cocina` con columnas **Nuevos**, **En preparación** y **Listos**.
 - Actualización automática cada 5 segundos.
 - Cambio de estado por platillo y por ticket.
-- **Cocina integrada en el POS y en Caja**: una cola de platillos permite marcar preparando/listo/servido sin abrir una pantalla separada.
+- **Cocina integrada en el POS y en Caja**: una cola lateral de platillos permite marcar preparando/listo/servido sin abrir una pantalla separada y sin hacer scroll en el POS.
 - Los cajeros también pueden usar el KDS completo si el restaurante no tiene una estación de cocina dedicada.
 - Comandas con mesa, cliente, modificadores, notas y tiempo transcurrido.
 - Envío a cocina desde el POS, conservando el estado de las líneas ya enviadas.
