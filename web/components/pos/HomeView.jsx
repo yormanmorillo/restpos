@@ -122,96 +122,102 @@ export default function HomeView({
         </div>
       ) : null}
 
-      <div className="quick-stats" aria-label="Resumen del salón">
-        <span className="stat-pill">
-          <span className="status-dot free" aria-hidden="true" />
-          <strong>{freeCount}</strong> {pluralize(freeCount, 'mesa libre', 'mesas libres')}
-        </span>
-        <span className="stat-pill">
-          <span className="status-dot busy" aria-hidden="true" />
-          <strong>{occupiedCount}</strong> {pluralize(occupiedCount, 'mesa ocupada', 'mesas ocupadas')}
-        </span>
-        <button type="button" className="stat-pill stat-refresh" onClick={onRetry} disabled={refreshing || loading}>
-          <Icon name="refresh" size={16} className={refreshing ? 'spin' : ''} />
-          Actualizar
-        </button>
-      </div>
-
-      <section className="tables-section" aria-labelledby="tables-title">
-        <div className="section-heading">
-          <h2 id="tables-title">Salón · Comer aquí</h2>
-          <span className="section-hint">Toca una mesa para abrir su cuenta</span>
-        </div>
-        {areas.length > 1 ? (
-          <div className="area-strip" role="tablist" aria-label="Áreas del salón">
-            <button type="button" role="tab" aria-selected={areaFilter === 'all'} className={`area-chip ${areaFilter === 'all' ? 'is-active' : ''}`} onClick={() => setAreaFilter('all')}>
-              Todas <span>{tables.length}</span>
-            </button>
-            {areas.map((area) => (
-              <button key={area.id} type="button" role="tab" aria-selected={areaFilter === area.id} className={`area-chip ${areaFilter === area.id ? 'is-active' : ''}`} onClick={() => setAreaFilter(area.id)}>
-                {area.name} <span>{tables.filter((table) => table.areaId === area.id).length}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className="tables-grid">
-          {loading
-            ? Array.from({ length: 8 }, (_, index) => <TableSkeleton key={index} />)
-            : visibleTables.map((table) => (
-                <TableCard
-                  key={table.id}
-                  table={table}
-                  timeZone={timeZone}
-                  onOpen={onOpenTable}
-                  disabled={Boolean(busyLabel)}
-                />
-              ))}
-        </div>
-      </section>
-
-      <KitchenQueue compact title="Cocina en curso" onOpenOrder={onOpenKitchenOrder} />
-
-      <section className="takeaway-section" aria-labelledby="takeaway-title">
-        <div className="section-heading">
-          <h2 id="takeaway-title">Para llevar y delivery</h2>
-          <span className="section-hint">{takeawayOrders.length} {takeawayOrders.length === 1 ? 'abierto' : 'abiertos'}</span>
-        </div>
-        {takeawayOrders.length === 0 ? (
-          <div className="empty-inline">
-            <Icon name="bag" size={22} />
-            <p>No hay pedidos para llevar abiertos. Usa “Nuevo para llevar” para iniciar uno.</p>
-          </div>
-        ) : (
-          <div className="takeaway-grid">
-            {takeawayOrders.map((order) => (
-              <button
-                key={order.id}
-                type="button"
-                className="takeaway-card"
-                onClick={() => onOpenTakeaway(order)}
-                disabled={Boolean(busyLabel)}
-              >
-                <span className="takeaway-icon">
-                  <Icon name="bag" size={22} />
-                </span>
-                <span className="takeaway-copy">
-                  <strong>{order.customerName || (order.delivery ? 'Delivery sin nombre' : 'Cliente sin nombre')}</strong>
-                  <span>
-                    {order.delivery ? 'Delivery' : 'Para llevar'} · {order.orderNumber} · {order.itemCount}{' '}
-                    {pluralize(order.itemCount, 'artículo', 'artículos')}
-                    {order.source === 'online' ? ' · En línea' : ''}
+      <div className="home-dashboard">
+        <div className="home-main">
+                <div className="quick-stats" aria-label="Resumen del salón">
+                  <span className="stat-pill">
+                    <span className="status-dot free" aria-hidden="true" />
+                    <strong>{freeCount}</strong> {pluralize(freeCount, 'mesa libre', 'mesas libres')}
                   </span>
-                </span>
-                <span className="takeaway-meta">
-                  <strong>{formatMoney(order.totalCents)}</strong>
-                  <span>{formatTime(order.createdAt, timeZone)}</span>
-                </span>
-                <Icon name="chevronRight" size={18} />
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+                  <span className="stat-pill">
+                    <span className="status-dot busy" aria-hidden="true" />
+                    <strong>{occupiedCount}</strong> {pluralize(occupiedCount, 'mesa ocupada', 'mesas ocupadas')}
+                  </span>
+                  <button type="button" className="stat-pill stat-refresh" onClick={onRetry} disabled={refreshing || loading}>
+                    <Icon name="refresh" size={16} className={refreshing ? 'spin' : ''} />
+                    Actualizar
+                  </button>
+                </div>
+
+                <section className="tables-section" aria-labelledby="tables-title">
+                  <div className="section-heading">
+                    <h2 id="tables-title">Salón · Comer aquí</h2>
+                    <span className="section-hint">Toca una mesa para abrir su cuenta</span>
+                  </div>
+                  {areas.length > 1 ? (
+                    <div className="area-strip" role="tablist" aria-label="Áreas del salón">
+                      <button type="button" role="tab" aria-selected={areaFilter === 'all'} className={`area-chip ${areaFilter === 'all' ? 'is-active' : ''}`} onClick={() => setAreaFilter('all')}>
+                        Todas <span>{tables.length}</span>
+                      </button>
+                      {areas.map((area) => (
+                        <button key={area.id} type="button" role="tab" aria-selected={areaFilter === area.id} className={`area-chip ${areaFilter === area.id ? 'is-active' : ''}`} onClick={() => setAreaFilter(area.id)}>
+                          {area.name} <span>{tables.filter((table) => table.areaId === area.id).length}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="tables-grid">
+                    {loading
+                      ? Array.from({ length: 8 }, (_, index) => <TableSkeleton key={index} />)
+                      : visibleTables.map((table) => (
+                          <TableCard
+                            key={table.id}
+                            table={table}
+                            timeZone={timeZone}
+                            onOpen={onOpenTable}
+                            disabled={Boolean(busyLabel)}
+                          />
+                        ))}
+                  </div>
+                </section>
+
+                <section className="takeaway-section" aria-labelledby="takeaway-title">
+                  <div className="section-heading">
+                    <h2 id="takeaway-title">Para llevar y delivery</h2>
+                    <span className="section-hint">{takeawayOrders.length} {takeawayOrders.length === 1 ? 'abierto' : 'abiertos'}</span>
+                  </div>
+                  {takeawayOrders.length === 0 ? (
+                    <div className="empty-inline">
+                      <Icon name="bag" size={22} />
+                      <p>No hay pedidos para llevar abiertos. Usa “Nuevo para llevar” para iniciar uno.</p>
+                    </div>
+                  ) : (
+                    <div className="takeaway-grid">
+                      {takeawayOrders.map((order) => (
+                        <button
+                          key={order.id}
+                          type="button"
+                          className="takeaway-card"
+                          onClick={() => onOpenTakeaway(order)}
+                          disabled={Boolean(busyLabel)}
+                        >
+                          <span className="takeaway-icon">
+                            <Icon name="bag" size={22} />
+                          </span>
+                          <span className="takeaway-copy">
+                            <strong>{order.customerName || (order.delivery ? 'Delivery sin nombre' : 'Cliente sin nombre')}</strong>
+                            <span>
+                              {order.delivery ? 'Delivery' : 'Para llevar'} · {order.orderNumber} · {order.itemCount}{' '}
+                              {pluralize(order.itemCount, 'artículo', 'artículos')}
+                              {order.source === 'online' ? ' · En línea' : ''}
+                            </span>
+                          </span>
+                          <span className="takeaway-meta">
+                            <strong>{formatMoney(order.totalCents)}</strong>
+                            <span>{formatTime(order.createdAt, timeZone)}</span>
+                          </span>
+                          <Icon name="chevronRight" size={18} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+        </div>
+        <aside className="home-side" aria-label="Cocina en curso">
+          <KitchenQueue compact title="Cocina en curso" onOpenOrder={onOpenKitchenOrder} />
+        </aside>
+      </div>
 
       {busyLabel ? (
         <div className="busy-overlay" role="status" aria-live="polite">

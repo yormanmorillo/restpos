@@ -29,7 +29,7 @@ export default function ShiftBanner() {
   }, [load]);
 
   if (!staff || !['admin', 'manager', 'cashier'].includes(staff.role)) return null;
-  if (pathname === '/caja') return null;
+  if (pathname === '/caja' || pathname === '/') return null;
   if (shift === undefined || shift) return null;
 
   return (
