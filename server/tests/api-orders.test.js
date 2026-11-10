@@ -5,8 +5,8 @@ import { businessDateFor } from '../src/business-date.js';
 
 let ctx;
 
-beforeEach(() => {
-  ctx = makeContext();
+beforeEach(async () => {
+  ctx = await makeContext();
 });
 
 afterEach(() => {
@@ -14,13 +14,13 @@ afterEach(() => {
 });
 
 async function openTableOrder(tableId = 1, payload = {}) {
-  const response = await createOrder(ctx.app, { type: 'mesa', tableId, ...payload });
+  const response = await createOrder(ctx.agent, { type: 'mesa', tableId, ...payload });
   expect(response.status).toBe(201);
   return response.body.order;
 }
 
 async function addGuacamole(orderId, quantity = 2, extra = {}) {
-  return request(ctx.app)
+  return ctx.agent
     .patch(`/api/orders/${orderId}/draft`)
     .send({
       items: [line('line-000001', 1, quantity, 'Sin cebolla')],
@@ -30,31 +30,31 @@ async function addGuacamole(orderId, quantity = 2, extra = {}) {
 
 describe('validación de entradas', () => {
   it('rechaza pedidos sin tipo o con mesa faltante', async () => {
-    let response = await request(ctx.app).post('/api/orders').send({ tableId: 1 });
+    let response = await ctx.agent.post('/api/orders').send({ tableId: 1 });
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
 
-    response = await request(ctx.app).post('/api/orders').send({ type: 'mesa' });
+    response = await ctx.agent.post('/api/orders').send({ type: 'mesa' });
     expect(response.status).toBe(422);
     expect(response.body.error.details.fields.some((f) => f.path === 'tableId')).toBe(true);
   });
 
   it('rechaza mesa en pedidos para llevar y mesas inexistentes', async () => {
-    let response = await createOrder(ctx.app, { type: 'llevar', tableId: 2 });
+    let response = await createOrder(ctx.agent, { type: 'llevar', tableId: 2 });
     expect(response.status).toBe(422);
 
-    response = await createOrder(ctx.app, { type: 'mesa', tableId: 999 });
+    response = await createOrder(ctx.agent, { type: 'mesa', tableId: 999 });
     expect(response.status).toBe(404);
   });
 
   it('rechaza cantidades fuera de rango y claves duplicadas', async () => {
     const order = await openTableOrder(1);
-    let response = await request(ctx.app)
+    let response = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({ items: [line('line-000001', 1, 0)] });
     expect(response.status).toBe(422);
 
-    response = await request(ctx.app)
+    response = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({ items: [line('line-000001', 1, 1), line('line-000001', 2, 1)] });
     expect(response.status).toBe(422);
@@ -63,45 +63,45 @@ describe('validación de entradas', () => {
 
   it('rechaza porcentajes mayores a 100 y métodos de pago inválidos', async () => {
     const order = await openTableOrder(1);
-    let response = await request(ctx.app)
+    let response = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({ items: [line('line-000001', 1)], discountType: 'percent', discountValue: 10001 });
     expect(response.status).toBe(422);
 
-    response = await request(ctx.app)
+    response = await ctx.agent
       .post(`/api/orders/${order.id}/pay`)
       .send({ paymentMethod: 'bitcoin' });
     expect(response.status).toBe(422);
   });
 
   it('responde 400 ante JSON inválido y 404 ante rutas inexistentes', async () => {
-    const invalidJson = await request(ctx.app)
+    const invalidJson = await ctx.agent
       .post('/api/orders')
       .set('Content-Type', 'application/json')
       .send('{"type":');
     expect(invalidJson.status).toBe(400);
     expect(invalidJson.body.error.code).toBe('INVALID_JSON');
 
-    const missing = await request(ctx.app).get('/api/no-existe');
+    const missing = await ctx.agent.get('/api/no-existe');
     expect(missing.status).toBe(404);
   });
 
   it('rechaza cobrar un pedido vacío y efectivo insuficiente', async () => {
     const order = await openTableOrder(2);
-    let response = await request(ctx.app)
+    let response = await ctx.agent
       .post(`/api/orders/${order.id}/pay`)
       .send({ paymentMethod: 'efectivo', cashReceivedCents: 0 });
     expect(response.status).toBe(422);
 
     await addGuacamole(order.id, 1);
-    response = await request(ctx.app)
+    response = await ctx.agent
       .post(`/api/orders/${order.id}/pay`)
       .send({ paymentMethod: 'efectivo', cashReceivedCents: 100 });
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('UNPROCESSABLE_ENTITY');
     expect(response.body.error.details.missingCents).toBeGreaterThan(0);
 
-    const stillOpen = await request(ctx.app).get(`/api/tables`);
+    const stillOpen = await ctx.agent.get(`/api/tables`);
     expect(stillOpen.body.tables.find((t) => t.id === 2).status).toBe('ocupada');
   });
 });
@@ -113,12 +113,12 @@ describe('mesas y estados de pedidos', () => {
     expect(order.tableName).toBe('Mesa 1');
     expect(order.orderNumber).toMatch(/^P-\d{5}$/);
 
-    const tables = await request(ctx.app).get('/api/tables');
+    const tables = await ctx.agent.get('/api/tables');
     const table = tables.body.tables.find((item) => item.id === 1);
     expect(table.status).toBe('ocupada');
     expect(table.openOrder.id).toBe(order.id);
 
-    const duplicate = await createOrder(ctx.app, { type: 'mesa', tableId: 1 });
+    const duplicate = await createOrder(ctx.agent, { type: 'mesa', tableId: 1 });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.error.details.orderId).toBe(order.id);
   });
@@ -150,7 +150,7 @@ describe('mesas y estados de pedidos', () => {
 
   it('ignora totales manipulados por el cliente y recalcula en el servidor', async () => {
     const order = await openTableOrder(1);
-    const response = await request(ctx.app)
+    const response = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({
         items: [line('line-000001', 1, 1)],
@@ -171,7 +171,7 @@ describe('mesas y estados de pedidos', () => {
       tipValue: 1500,
     });
 
-    const paidResponse = await request(ctx.app)
+    const paidResponse = await ctx.agent
       .post(`/api/orders/${order.id}/pay`)
       .send({ paymentMethod: 'efectivo', cashReceivedCents: 30000 });
     expect(paidResponse.status).toBe(200);
@@ -184,10 +184,10 @@ describe('mesas y estados de pedidos', () => {
     expect(paid.paidAt).toBeTruthy();
     expect(paid.businessDate).toBe(businessDateFor(new Date(), ctx.config.timezone));
 
-    const tables = await request(ctx.app).get('/api/tables');
+    const tables = await ctx.agent.get('/api/tables');
     expect(tables.body.tables.find((t) => t.id === 1).status).toBe('libre');
 
-    const again = await request(ctx.app)
+    const again = await ctx.agent
       .post(`/api/orders/${order.id}/pay`)
       .send({ paymentMethod: 'tarjeta' });
     expect(again.status).toBe(409);
@@ -199,7 +199,7 @@ describe('mesas y estados de pedidos', () => {
   it('cobra con tarjeta sin cambio y registra el método', async () => {
     const order = await openTableOrder(3);
     await addGuacamole(order.id, 1);
-    const response = await request(ctx.app)
+    const response = await ctx.agent
       .post(`/api/orders/${order.id}/pay`)
       .send({ paymentMethod: 'tarjeta', cashReceivedCents: 999999 });
     expect(response.status).toBe(200);
@@ -208,43 +208,43 @@ describe('mesas y estados de pedidos', () => {
     expect(response.body.order.cashReceivedCents).toBeNull();
     expect(response.body.order.changeCents).toBe(0);
 
-    const tables = await request(ctx.app).get('/api/tables');
+    const tables = await ctx.agent.get('/api/tables');
     expect(tables.body.tables.find((t) => t.id === 3).status).toBe('libre');
   });
 
   it('anula un pedido y libera la mesa; solo permite anular pedidos abiertos', async () => {
     const order = await openTableOrder(4);
-    const response = await request(ctx.app).post(`/api/orders/${order.id}/cancel`).send({});
+    const response = await ctx.agent.post(`/api/orders/${order.id}/cancel`).send({});
     expect(response.status).toBe(200);
     expect(response.body.order.status).toBe('anulada');
     expect(response.body.order.cancelledAt).toBeTruthy();
 
-    const tables = await request(ctx.app).get('/api/tables');
+    const tables = await ctx.agent.get('/api/tables');
     expect(tables.body.tables.find((t) => t.id === 4).status).toBe('libre');
 
-    const again = await request(ctx.app).post(`/api/orders/${order.id}/cancel`).send({});
+    const again = await ctx.agent.post(`/api/orders/${order.id}/cancel`).send({});
     expect(again.status).toBe(409);
   });
 
   it('gestiona pedidos para llevar sin mesa', async () => {
     const order = await openTableOrder(5);
-    await request(ctx.app).post(`/api/orders/${order.id}/cancel`);
+    await ctx.agent.post(`/api/orders/${order.id}/cancel`);
 
-    const takeaway = await createOrder(ctx.app, { type: 'llevar', customerName: 'Ana' });
+    const takeaway = await createOrder(ctx.agent, { type: 'llevar', customerName: 'Ana' });
     expect(takeaway.status).toBe(201);
     expect(takeaway.body.order.tableId).toBeNull();
     expect(takeaway.body.order.customerName).toBe('Ana');
 
-    await request(ctx.app)
+    await ctx.agent
       .patch(`/api/orders/${takeaway.body.order.id}/draft`)
       .send({ items: [line('line-000001', 10, 2)] });
-    const paid = await request(ctx.app)
+    const paid = await ctx.agent
       .post(`/api/orders/${takeaway.body.order.id}/pay`)
       .send({ paymentMethod: 'otro', cashReceivedCents: 0 });
     expect(paid.status).toBe(200);
     expect(paid.body.order.status).toBe('pagada');
 
-    const openTakeaway = await request(ctx.app).get('/api/orders?status=abierta&type=llevar');
+    const openTakeaway = await ctx.agent.get('/api/orders?status=abierta&type=llevar');
     expect(openTakeaway.body.orders).toHaveLength(0);
   });
 
@@ -252,12 +252,12 @@ describe('mesas y estados de pedidos', () => {
     const order = await openTableOrder(1);
     await addGuacamole(order.id, 1);
 
-    const priceUpdate = await request(ctx.app)
+    const priceUpdate = await ctx.agent
       .patch('/api/admin/products/1')
       .send({ priceCents: 12000 });
     expect(priceUpdate.status).toBe(200);
 
-    const updated = await request(ctx.app)
+    const updated = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({ items: [line('line-000001', 1, 2)] });
     expect(updated.status).toBe(200);
@@ -266,9 +266,9 @@ describe('mesas y estados de pedidos', () => {
   });
 
   it('rechaza productos desactivados en líneas nuevas', async () => {
-    await request(ctx.app).patch('/api/admin/products/2').send({ active: false });
+    await ctx.agent.patch('/api/admin/products/2').send({ active: false });
     const order = await openTableOrder(1);
-    const response = await request(ctx.app)
+    const response = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({ items: [line('line-000001', 2, 1)] });
     expect(response.status).toBe(422);
@@ -278,9 +278,9 @@ describe('mesas y estados de pedidos', () => {
   it('conserva una línea existente si el producto se desactiva después', async () => {
     const order = await openTableOrder(1);
     await addGuacamole(order.id, 1);
-    await request(ctx.app).patch('/api/admin/products/1').send({ active: false });
+    await ctx.agent.patch('/api/admin/products/1').send({ active: false });
 
-    const response = await request(ctx.app)
+    const response = await ctx.agent
       .patch(`/api/orders/${order.id}/draft`)
       .send({ items: [line('line-000001', 1, 2)] });
     expect(response.status).toBe(200);
@@ -291,14 +291,14 @@ describe('mesas y estados de pedidos', () => {
   it('lista pedidos con filtros y paginación', async () => {
     const order = await openTableOrder(1);
     await addGuacamole(order.id, 1);
-    await request(ctx.app).post(`/api/orders/${order.id}/pay`).send({ paymentMethod: 'tarjeta' });
+    await ctx.agent.post(`/api/orders/${order.id}/pay`).send({ paymentMethod: 'tarjeta' });
 
-    const list = await request(ctx.app).get('/api/orders?status=pagada&limit=10&offset=0');
+    const list = await ctx.agent.get('/api/orders?status=pagada&limit=10&offset=0');
     expect(list.status).toBe(200);
     expect(list.body.total).toBe(1);
     expect(list.body.orders[0].itemCount).toBe(1);
 
-    const empty = await request(ctx.app).get('/api/orders?status=pagada&date=2020-01-01');
+    const empty = await ctx.agent.get('/api/orders?status=pagada&date=2020-01-01');
     expect(empty.body.total).toBe(0);
   });
 });

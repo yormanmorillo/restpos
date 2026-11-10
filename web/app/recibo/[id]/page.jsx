@@ -89,6 +89,12 @@ export default function ReceiptPage() {
           <button type="button" className="btn btn-secondary" onClick={() => window.close()}>
             Cerrar
           </button>
+          <button type="button" className="btn btn-secondary" onClick={async () => {
+            try { await api.printOrder(order.id, 'receipt'); } catch (printError) { alert(printError.message); }
+          }}>
+            <Icon name="receipt" size={19} />
+            Térmica
+          </button>
           <button type="button" className="btn btn-primary" onClick={() => window.print()}>
             <Icon name="printer" size={19} />
             Imprimir
@@ -130,6 +136,18 @@ export default function ReceiptPage() {
               <strong>{order.customerName}</strong>
             </div>
           ) : null}
+          {order.customerPhone ? (
+            <div className="receipt-meta-wide">
+              <span>Teléfono</span>
+              <strong>{order.customerPhone}</strong>
+            </div>
+          ) : null}
+          {order.delivery && order.deliveryAddress ? (
+            <div className="receipt-meta-wide">
+              <span>Dirección de entrega</span>
+              <strong>{order.deliveryAddress}</strong>
+            </div>
+          ) : null}
         </section>
 
         {!paid ? (
@@ -154,6 +172,9 @@ export default function ReceiptPage() {
               <div className="receipt-item-name">
                 <strong>{item.productName}</strong>
                 <span>{formatMoney(item.unitPriceCents)} c/u</span>
+                {(item.modifiers ?? []).map((modifier) => (
+                  <em key={modifier.id}>+ {modifier.modifierName}{modifier.priceDeltaCents > 0 ? ` (${formatMoney(modifier.priceDeltaCents)})` : ''}</em>
+                ))}
                 {item.notes ? <em>{item.notes}</em> : null}
               </div>
               <span className="receipt-amount">{formatMoney(item.lineTotalCents)}</span>
@@ -181,6 +202,12 @@ export default function ReceiptPage() {
             <span>Impuesto ({order.taxRateBps / 100}%)</span>
             <span>{formatMoney(order.taxCents)}</span>
           </div>
+          {order.deliveryFeeCents > 0 ? (
+            <div>
+              <span>Costo de entrega</span>
+              <span>{formatMoney(order.deliveryFeeCents)}</span>
+            </div>
+          ) : null}
           {order.tipCents > 0 ? (
             <div>
               <span>Propina</span>
@@ -196,22 +223,40 @@ export default function ReceiptPage() {
         <div className="receipt-rule" />
 
         <section className="receipt-payment">
-          <div>
-            <span>Forma de pago</span>
-            <strong>{paid ? paymentLabel(order.paymentMethod) : 'Pendiente'}</strong>
-          </div>
-          {paid && order.paymentMethod === 'efectivo' ? (
+          {paid ? (
             <>
-              <div>
-                <span>Efectivo recibido</span>
-                <span>{formatMoney(order.cashReceivedCents ?? 0)}</span>
-              </div>
-              <div>
-                <span>Cambio</span>
-                <span>{formatMoney(order.changeCents ?? 0)}</span>
-              </div>
+              {(order.payments ?? []).length > 0 ? (
+                (order.payments ?? []).map((payment) => (
+                  <div key={payment.id}>
+                    <span>{paymentLabel(payment.paymentMethod)}</span>
+                    <span>{formatMoney(payment.amountCents)}</span>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <span>Forma de pago</span>
+                  <strong>{paymentLabel(order.paymentMethod)}</strong>
+                </div>
+              )}
+              {order.payments?.some((payment) => payment.paymentMethod === 'efectivo') ? (
+                <>
+                  <div>
+                    <span>Efectivo recibido</span>
+                    <span>{formatMoney(order.cashReceivedCents ?? 0)}</span>
+                  </div>
+                  <div>
+                    <span>Cambio</span>
+                    <span>{formatMoney(order.changeCents ?? 0)}</span>
+                  </div>
+                </>
+              ) : null}
             </>
-          ) : null}
+          ) : (
+            <div>
+              <span>Forma de pago</span>
+              <strong>Pendiente</strong>
+            </div>
+          )}
         </section>
 
         <footer className="receipt-footer">

@@ -1,16 +1,17 @@
 # Despliegue en el VPS
 
-Instancia operativa de Casa Roble POS sobre Dokploy.
+Instancia operativa de Casa Roble POS sobre Dokploy, Docker y Traefik.
 
 ## URLs
 
 | Servicio | URL |
 |---|---|
 | POS | <https://totem.lapizzeria.food> |
+| Pedidos en línea | <https://totem.lapizzeria.food/pedir> |
+| Cocina (KDS) | <https://totem.lapizzeria.food/cocina> |
+| Caja | <https://totem.lapizzeria.food/caja> |
+| API | <https://totem.lapizzeria.food/api/health> |
 | Panel Dokploy | <https://admin.lapizzeria.food> |
-| API (misma origen) | <https://totem.lapizzeria.food/api/health> |
-
-> Las credenciales de acceso al POS y al panel se entregan por un canal separado. No están escritas en este repositorio.
 
 ## Arquitectura
 
@@ -18,7 +19,7 @@ Instancia operativa de Casa Roble POS sobre Dokploy.
 Internet
    │
    ▼
-Traefik (Docker, puertos 80/443, Let's Encrypt)
+Traefik (Docker, 80/443, Let's Encrypt)
    ├── admin.lapizzeria.food → Dokploy :3000
    └── totem.lapizzeria.food → web (Next.js :3000)
                                   └── /api → api (Express :4000)
@@ -33,7 +34,7 @@ Traefik (Docker, puertos 80/443, Let's Encrypt)
 - **Proyecto Dokploy:** `RestPost`.
 - **Stack:** `restpos` (`appName: restpos-h7kjj3`), compose en modo `docker-compose`.
 - **Imágenes locales:** `restpos-api:latest` y `restpos-web:latest`.
-- **Persistencia:** volumen Docker `restpos_data`, montado en `/data`; SQLite en `/data/restpos.db`.
+- **Persistencia:** volumen Docker `restpos_data`, montado en `/data`; SQLite en `/data/restpos.db`, con WAL.
 - **Fuente para rebuild:** `/home/ubuntu/restpos-build`.
 
 ## DNS
@@ -45,32 +46,59 @@ totem.lapizzeria.food  A  40.160.39.1
 admin.lapizzeria.food  A  40.160.39.1
 ```
 
-Los certificados Let's Encrypt los gestiona Traefik y se renuevan automáticamente.
+Traefik gestiona y renueva los certificados de Let's Encrypt.
 
 ## Seguridad
 
-- La app está detrás de **HTTP Basic Auth** en Traefik. Todo el POS, API, historial y tickets exigen autenticación.
-- Se añaden cabeceras HSTS y de seguridad desde Traefik.
-- El panel Dokploy solo se publica por `https://admin.lapizzeria.food`; el puerto 3000 está bloqueado desde Internet.
+- **La autenticación del POS es propia de la aplicación:** cada empleado entra con su nombre y PIN; hay roles y sesiones.
+- La cookie `restpos_session` es `HttpOnly`, `SameSite=Lax` y `Secure` en producción (`COOKIE_SECURE=true`).
+- La página pública `/pedir` y los endpoints `/api/public/*` están abiertos sin sesión por diseño. Todo lo demás exige una sesión válida.
+- Los PIN se guardan con `scrypt`; los tokens de sesión se guardan como hash SHA-256.
+- Hay límite de intentos por empleado y por IP.
+- El tráfico está cifrado con Let's Encrypt y HSTS. Se mantienen `X-Content-Type-Options`, `Referrer-Policy`, `frameDeny` y `contentTypeNosniff`.
+- El panel Dokploy solo se publica en `https://admin.lapizzeria.food`; el puerto 3000 está bloqueado desde Internet.
 - UFW permite únicamente `22`, `80` y `443`.
-- Debido a que Docker puede saltarse UFW, la unidad `restpos-firewall.service` ejecuta `/usr/local/sbin/restpos-firewall`, que detecta la interfaz pública y agrega una regla en `DOCKER-USER` (IPv4 e IPv6) para bloquear el puerto 3000. La unidad se reinicia junto con Docker.
-- El password SSH sigue habilitado. Se recomienda configurar una clave propia y desactivar `PasswordAuthentication` cuando esté verificada.
-- El acceso al panel es equivalente a acceso root al host (Docker socket). Usa una contraseña fuerte y no lo compartas.
+- Docker puede saltarse UFW. La unidad `restpos-firewall.service` ejecuta `/usr/local/sbin/restpos-firewall`, que agrega una regla persistente en `DOCKER-USER` (IPv4 e IPv6) para bloquear el puerto 3000. La unidad se reinicia junto con Docker.
+- El password SSH sigue habilitado. Se recomienda configurar una clave propia y desactivar `PasswordAuthentication` una vez verificada.
+- El panel de Dokploy equivale a acceso root al host (Docker socket). Usa una contraseña fuerte y no la compartas.
 
-### Cambiar la contraseña del POS
+### Autenticación en Traefik
 
-En el VPS:
+La versión 2 eliminó el Basic Auth compartido del dominio del POS. Ahora la autenticación de empleados es la de la aplicación y `/pedir` debe poder abrirse sin credenciales de proxy.
 
-```bash
-HASH="$(openssl passwd -apr1 'NUEVA_CONTRASEÑA')"
-sudo cp /etc/dokploy/traefik/dynamic/restpos-auth.yml /root/restpos-auth.yml.bak
-printf "http:\n  middlewares:\n    restpos-auth:\n      basicAuth:\n        users:\n          - 'casaroble:%s'\n    restpos-security:\n      headers:\n        stsSeconds: 31536000\n        stsIncludeSubdomains: true\n        stsPreload: true\n        contentTypeNosniff: true\n        frameDeny: true\n        referrerPolicy: strict-origin-when-cross-origin\n" "$HASH" | sudo tee /etc/dokploy/traefik/dynamic/restpos-auth.yml >/dev/null
+La configuración de Traefik debe conservar el middleware de seguridad:
+
+```text
+traefik.http.routers.restpos-h7kjj3-1-websecure.middlewares=restpos-security@file
 ```
 
-Traefik recarga el archivo automáticamente. Verifica con:
+No vuelvas a añadir `restpos-auth@file` al router del POS. El archivo dinámico `/etc/dokploy/traefik/dynamic/restpos-auth.yml` conserva `restpos-security`; las credenciales Basic Auth ya no se usan para el POS.
+
+## Primer arranque tras un despliegue limpio
+
+La base incluye menú, áreas, mesas y modificadores, pero **no incluye empleados**. La primera vez:
+
+1. Abre <https://totem.lapizzeria.food/login>.
+2. Verás **Crea tu administrador**.
+3. Captura nombre y un PIN de 6 a 8 dígitos (recomendado).
+4. Después podrás crear cajeros, meseros y cocina desde **Administración → Equipo**.
+
+No compartas la base sin antes revisar los empleados y PINs. Si se pierde el acceso, usa el procedimiento de recuperación.
+
+### Recuperar el PIN de un administrador
+
+Con la app detenida o desde el contenedor del API:
 
 ```bash
-curl -I https://totem.lapizzeria.food/
+cd /home/ubuntu/restpos-build
+sudo docker compose -p restpos-h7kjj3 exec api \
+  node server/scripts/reset-admin-pin.js "Administrador" 123456
+```
+
+Esto restablece el PIN, reactiva la cuenta, la deja como `admin` y elimina sus sesiones. En local:
+
+```bash
+npm run admin:reset-pin -w server -- "Administrador" 123456
 ```
 
 ## Respaldos
@@ -85,7 +113,7 @@ Script instalado en el VPS:
 - Comprime el archivo en `/home/ubuntu/restpos-backups/`.
 - Conserva 14 días.
 - Cron diario a las **09:00 UTC** (03:00 en Ciudad de México).
-- Los respaldos son locales. Se recomienda copiarlos periódicamente a otro servidor o almacenamiento S3.
+- Los respaldos son locales. Cópialos periódicamente a otro servidor o almacenamiento S3.
 
 Ejecutar uno manualmente:
 
@@ -116,7 +144,7 @@ sudo bash -c '
 '
 ```
 
-3. Arranca de nuevo el servicio y comprueba `/api/health`, el historial y las mesas.
+3. Arranca de nuevo el servicio y comprueba `/api/health`, el login, el historial y las mesas.
 
 ## Actualizar la aplicación
 
@@ -141,7 +169,9 @@ sudo docker build --target api -t restpos-api:latest .
 sudo docker build --target web -t restpos-web:latest .
 ```
 
-Después, desde Dokploy pulsa **Deploy** en el stack `restpos`, o fuerza la recreación:
+El `Dockerfile` activa `NEXT_OUTPUT=standalone` solo en la etapa de build de la web. En local, `next start` sigue funcionando sin esa variable.
+
+Recrea los contenedores:
 
 ```bash
 cd /etc/dokploy/compose/restpos-h7kjj3/code
@@ -149,6 +179,21 @@ sudo docker compose -p restpos-h7kjj3 --env-file .env up -d --force-recreate
 ```
 
 No uses `down -v` en producción: eliminaría el volumen de SQLite.
+
+### Variables de producción
+
+El compose del stack del API debe incluir:
+
+```yaml
+NODE_ENV: production
+DATABASE_PATH: /data/restpos.db
+APP_TIMEZONE: America/Mexico_City
+TAX_RATE_BPS: "1600"
+COOKIE_SECURE: "true"
+SESSION_TTL_HOURS: "12"
+```
+
+El frontend necesita `API_URL=http://api:4000` y `PORT=3000`.
 
 ## Logs y salud
 
@@ -165,10 +210,32 @@ Los despliegues de Dokploy quedan en:
 /etc/dokploy/logs/restpos-h7kjj3/
 ```
 
+Comprobaciones rápidas:
+
+```bash
+curl -fsS https://totem.lapizzeria.food/api/health
+curl -I https://totem.lapizzeria.food/
+curl -I https://totem.lapizzeria.food/pedir
+```
+
+## Impresión térmica
+
+La impresora debe ser ESC/POS y aceptar conexiones TCP en el puerto 9100 (o el configurado), accesible desde el contenedor del API.
+
+- Configura **cocina** y **tickets** por separado en **Administración → Ajustes**.
+- La comanda se envía al pulsar **Enviar a cocina** si `auto_print_kitchen` está activo.
+- El ticket del cliente se imprime desde el POS o desde `/recibo/:id`.
+- Prueba desde la red del servidor:
+
+```bash
+nc -vz 192.168.1.50 9100
+```
+
 ## Limitaciones actuales
 
 - Las imágenes viven solo en el VPS. Si se destruye el servidor hay que reconstruirlas desde este repositorio.
 - SQLite es apropiado para una sola terminal o pocas terminales; no escales la API a varias réplicas.
-- El Basic Auth es compartido; no identifica a cada empleado.
+- No hay pasarela de pago: la terminal bancaria es externa.
+- No hay inventario ni recetas.
 - No hay backup externo automático todavía.
-- Si cambia el volumen de ventas o se requieren varias cajas, el siguiente paso es migrar a PostgreSQL y añadir autenticación por usuario.
+- Si cambia el volumen de ventas o se requieren varias cajas/sucursales, el siguiente paso es migrar a PostgreSQL y añadir sincronización en tiempo real.

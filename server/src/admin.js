@@ -1,5 +1,6 @@
 import { notFound, conflict, validationError } from './errors.js';
 import { serializeCategory, serializeProduct } from './serializers.js';
+import { getProductModifierGroups } from './modifiers.js';
 
 function nowIso() {
   return new Date().toISOString();
@@ -90,14 +91,18 @@ export function updateCategory(db, id, input) {
 }
 
 export function listAdminProducts(db) {
-  return db
+  const rows = db
     .prepare(`
       SELECT p.*, c.name AS category_name
       FROM products p JOIN categories c ON c.id = p.category_id
       ORDER BY c.sort_order, p.sort_order, p.name
     `)
-    .all()
-    .map(serializeProduct);
+    .all();
+  const assignments = getProductModifierGroups(db, rows.map((row) => Number(row.id)));
+  return rows.map((row) => ({
+    ...serializeProduct(row),
+    modifierGroupIds: (assignments.get(Number(row.id)) ?? []).map((group) => group.id),
+  }));
 }
 
 export function createProduct(db, input) {

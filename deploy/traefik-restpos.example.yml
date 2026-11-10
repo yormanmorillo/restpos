@@ -1,12 +1,9 @@
-# Middleware de ejemplo para el stack RestPost.
+# Middleware de seguridad para el stack RestPost.
 # Instalar en /etc/dokploy/traefik/dynamic/restpos-auth.yml del VPS.
-# Generar el hash con: openssl passwd -apr1 'TU_CONTRASEÑA'
+# La autenticación de empleados vive en la aplicación; no se usa Basic Auth
+# para que /pedir pueda abrirse al público.
 http:
   middlewares:
-    restpos-auth:
-      basicAuth:
-        users:
-          - 'casaroble:$apr1$REEMPLAZA_ESTE_HASH'
     restpos-security:
       headers:
         stsSeconds: 31536000

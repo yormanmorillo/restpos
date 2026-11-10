@@ -13,6 +13,7 @@ RUN npm ci --no-audit --no-fund
 FROM base AS web-build
 ENV NODE_ENV=production
 ENV API_URL=http://api:4000
+ENV NEXT_OUTPUT=standalone
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY shared ./shared

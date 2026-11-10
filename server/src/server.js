@@ -1,10 +1,11 @@
 import { config } from './config.js';
-import { openDatabase, migrate, seedDatabase, repairTableStatuses } from './db.js';
+import { openDatabase, migrate, seedDatabase, seedOperationalData, repairTableStatuses } from './db.js';
 import { createApp } from './app.js';
 
 const db = openDatabase(config.databasePath);
 migrate(db);
 seedDatabase(db);
+seedOperationalData(db);
 repairTableStatuses(db);
 
 const app = createApp({ db, config });

@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const SCHEMA = `
+const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -93,6 +93,139 @@ CREATE UNIQUE INDEX IF NOT EXISTS order_items_client_key_unique
 CREATE INDEX IF NOT EXISTS order_items_order_idx ON order_items(order_id, sort_order);
 `;
 
+const OPERATIONS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS staff (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'cashier', 'server', 'kitchen')),
+  pin_hash TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS staff_active_idx ON staff(active, name);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT NOT NULL UNIQUE,
+  staff_id INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_staff_idx ON sessions(staff_id);
+
+CREATE TABLE IF NOT EXISTS shifts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  opened_by_staff_id INTEGER NOT NULL REFERENCES staff(id),
+  closed_by_staff_id INTEGER REFERENCES staff(id),
+  opening_cents INTEGER NOT NULL DEFAULT 0 CHECK (opening_cents >= 0),
+  counted_cents INTEGER CHECK (counted_cents IS NULL OR counted_cents >= 0),
+  expected_cents INTEGER NOT NULL DEFAULT 0,
+  difference_cents INTEGER,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  opened_at TEXT NOT NULL,
+  closed_at TEXT,
+  notes TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS shifts_one_open ON shifts(status) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS shifts_opened_at_idx ON shifts(opened_at);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  shift_id INTEGER REFERENCES shifts(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('efectivo', 'tarjeta', 'otro')),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+  cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
+  change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS payments_order_idx ON payments(order_id);
+CREATE INDEX IF NOT EXISTS payments_shift_idx ON payments(shift_id);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS areas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS modifier_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  selection_type TEXT NOT NULL CHECK (selection_type IN ('single', 'multiple')),
+  required INTEGER NOT NULL DEFAULT 0 CHECK (required IN (0, 1)),
+  min_select INTEGER NOT NULL DEFAULT 0 CHECK (min_select >= 0),
+  max_select INTEGER NOT NULL DEFAULT 1 CHECK (max_select >= 1),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CHECK (min_select <= max_select)
+);
+
+CREATE TABLE IF NOT EXISTS modifiers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES modifier_groups(id) ON DELETE CASCADE,
+  name TEXT NOT NULL COLLATE NOCASE,
+  price_delta_cents INTEGER NOT NULL DEFAULT 0 CHECK (price_delta_cents >= 0 AND price_delta_cents <= 100000),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (group_id, name)
+);
+CREATE INDEX IF NOT EXISTS modifiers_group_idx ON modifiers(group_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS product_modifier_groups (
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  group_id INTEGER NOT NULL REFERENCES modifier_groups(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (product_id, group_id)
+);
+
+CREATE TABLE IF NOT EXISTS order_item_modifiers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_item_id INTEGER NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+  modifier_id INTEGER REFERENCES modifiers(id) ON DELETE SET NULL,
+  group_name TEXT NOT NULL,
+  modifier_name TEXT NOT NULL,
+  price_delta_cents INTEGER NOT NULL DEFAULT 0 CHECK (price_delta_cents >= 0)
+);
+CREATE INDEX IF NOT EXISTS order_item_modifiers_item_idx ON order_item_modifiers(order_item_id);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  details TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON audit_logs(created_at);
+`;
+
+function tableColumns(db, table) {
+  return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
+}
+
+function ensureColumn(db, table, name, definition) {
+  const columns = tableColumns(db, table);
+  if (!columns.has(name)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  }
+}
+
 export function openDatabase(filename) {
   if (filename !== ':memory:') {
     mkdirSync(path.dirname(filename), { recursive: true });
@@ -108,7 +241,56 @@ export function openDatabase(filename) {
 }
 
 export function migrate(db) {
-  db.exec(SCHEMA);
+  db.exec(BASE_SCHEMA);
+  db.exec(OPERATIONS_SCHEMA);
+
+  ensureColumn(db, 'restaurant_tables', 'area_id', 'INTEGER REFERENCES areas(id)');
+  ensureColumn(db, 'restaurant_tables', 'position', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'restaurant_tables', 'active', 'INTEGER NOT NULL DEFAULT 1');
+
+  ensureColumn(db, 'orders', 'delivery', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'orders', 'customer_phone', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'orders', 'delivery_address', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'orders', 'source', "TEXT NOT NULL DEFAULT 'pos'");
+  ensureColumn(db, 'orders', 'amount_paid_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'orders', 'opened_by_staff_id', 'INTEGER REFERENCES staff(id)');
+  ensureColumn(db, 'orders', 'closed_by_staff_id', 'INTEGER REFERENCES staff(id)');
+  ensureColumn(db, 'orders', 'shift_id', 'INTEGER REFERENCES shifts(id)');
+  ensureColumn(db, 'orders', 'kitchen_sent_at', 'TEXT');
+  ensureColumn(db, 'orders', 'scheduled_for', 'TEXT');
+  ensureColumn(db, 'orders', 'delivery_fee_cents', 'INTEGER NOT NULL DEFAULT 0');
+
+  ensureColumn(db, 'order_items', 'status', "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn(db, 'order_items', 'course', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(db, 'order_items', 'sent_at', 'TEXT');
+  ensureColumn(db, 'order_items', 'ready_at', 'TEXT');
+  ensureColumn(db, 'order_items', 'served_at', 'TEXT');
+  ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS orders_table_open_idx ON orders(table_id, status);
+    CREATE INDEX IF NOT EXISTS orders_source_idx ON orders(source, status);
+    CREATE INDEX IF NOT EXISTS order_items_status_idx ON order_items(status, order_id);
+    CREATE INDEX IF NOT EXISTS restaurant_tables_area_idx ON restaurant_tables(area_id, position);
+  `);
+
+  // Compatibilidad con ventas anteriores a la tabla de pagos.
+  db.exec(`
+    INSERT INTO payments
+      (order_id, shift_id, staff_id, payment_method, amount_cents, cash_received_cents,
+       change_cents, created_at)
+    SELECT o.id, NULL, NULL, COALESCE(o.payment_method, 'otro'), o.total_cents,
+           o.cash_received_cents, COALESCE(o.change_cents, 0), COALESCE(o.paid_at, o.created_at)
+    FROM orders o
+    WHERE o.status = 'pagada'
+      AND o.total_cents > 0
+      AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id);
+    UPDATE orders
+    SET amount_paid_cents = total_cents
+    WHERE status = 'pagada' AND amount_paid_cents = 0;
+  `);
+
+  db.exec('PRAGMA user_version = 2;');
 }
 
 export function transaction(db, fn) {
@@ -186,6 +368,21 @@ const SEED_TABLES = [
   ['Mesa 8', 6],
 ];
 
+const SETTINGS_DEFAULTS = {
+  restaurant_name: 'Casa Roble',
+  online_ordering_enabled: 'false',
+  online_pickup_enabled: 'true',
+  online_delivery_enabled: 'true',
+  delivery_fee_cents: '0',
+  printer_enabled: 'false',
+  kitchen_printer_host: '',
+  kitchen_printer_port: '9100',
+  receipt_printer_host: '',
+  receipt_printer_port: '9100',
+  auto_print_kitchen: 'false',
+  require_shift: 'true',
+};
+
 export function seedDatabase(db, { now = new Date().toISOString() } = {}) {
   const categoryCount = db.prepare('SELECT COUNT(*) AS count FROM categories').get().count;
   if (categoryCount > 0) return { seeded: false };
@@ -224,6 +421,103 @@ export function seedDatabase(db, { now = new Date().toISOString() } = {}) {
   });
 
   return { seeded: true };
+}
+
+export function seedOperationalData(db, { now = new Date().toISOString() } = {}) {
+  transaction(db, () => {
+    const insertSetting = db.prepare(
+      'INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)',
+    );
+    for (const [key, value] of Object.entries(SETTINGS_DEFAULTS)) {
+      insertSetting.run(key, value, now);
+    }
+
+    let areaCount = db.prepare('SELECT COUNT(*) AS count FROM areas').get().count;
+    if (areaCount === 0) {
+      db.prepare(
+        'INSERT INTO areas (name, sort_order, active, created_at) VALUES (?, ?, 1, ?)',
+      ).run('Salón principal', 10, now);
+      db.prepare(
+        'INSERT INTO areas (name, sort_order, active, created_at) VALUES (?, ?, 1, ?)',
+      ).run('Terraza', 20, now);
+      areaCount = 2;
+    }
+    const mainArea = db.prepare('SELECT id FROM areas ORDER BY sort_order, id LIMIT 1').get();
+    const terraceArea = db
+      .prepare('SELECT id FROM areas ORDER BY sort_order DESC, id DESC LIMIT 1')
+      .get();
+    const unassigned = db
+      .prepare('SELECT id, name FROM restaurant_tables WHERE area_id IS NULL ORDER BY id')
+      .all();
+    const updateTable = db.prepare(
+      'UPDATE restaurant_tables SET area_id = ?, position = ? WHERE id = ?',
+    );
+    for (const table of unassigned) {
+      const numeric = Number(String(table.name).replace(/\D+/g, '')) || Number(table.id);
+      const areaId = areaCount > 1 && numeric >= 7 ? Number(terraceArea.id) : Number(mainArea.id);
+      updateTable.run(areaId, numeric, Number(table.id));
+    }
+
+    const modifierGroupCount = db
+      .prepare('SELECT COUNT(*) AS count FROM modifier_groups')
+      .get().count;
+    if (modifierGroupCount === 0) {
+      const insertGroup = db.prepare(`
+        INSERT INTO modifier_groups
+          (name, selection_type, required, min_select, max_select, sort_order, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `);
+      const insertModifier = db.prepare(`
+        INSERT INTO modifiers (group_id, name, price_delta_cents, sort_order, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
+      `);
+      const assign = db.prepare(
+        'INSERT OR IGNORE INTO product_modifier_groups (product_id, group_id, sort_order) VALUES (?, ?, ?)',
+      );
+
+      const extrasResult = insertGroup.run('Extras', 'multiple', 0, 0, 4, 10, now, now);
+      const extrasId = Number(extrasResult.lastInsertRowid);
+      const extras = [
+        ['Extra queso', 1500, 10],
+        ['Extra aguacate', 2000, 20],
+        ['Sin cebolla', 0, 30],
+        ['Sin picante', 0, 40],
+        ['Extra salsa', 500, 50],
+      ];
+      for (const [name, price, order] of extras) {
+        insertModifier.run(extrasId, name, price, order, now, now);
+      }
+
+      const termResult = insertGroup.run('Término de la carne', 'single', 1, 1, 1, 20, now, now);
+      const termId = Number(termResult.lastInsertRowid);
+      for (const [name, order] of [
+        ['Término medio', 10],
+        ['Tres cuartos', 20],
+        ['Bien cocido', 30],
+      ]) {
+        insertModifier.run(termId, name, 0, order, now, now);
+      }
+
+      const foodProducts = db
+        .prepare(`
+          SELECT p.id FROM products p
+          JOIN categories c ON c.id = p.category_id
+          WHERE c.name IN ('Entradas', 'Platos fuertes')
+        `)
+        .all();
+      for (const product of foodProducts) {
+        assign.run(Number(product.id), extrasId, 10);
+      }
+      const cookedProducts = db
+        .prepare(`
+          SELECT id FROM products WHERE name IN ('Hamburguesa de res', 'Salmón a la parrilla')
+        `)
+        .all();
+      for (const product of cookedProducts) {
+        assign.run(Number(product.id), termId, 5);
+      }
+    }
+  });
 }
 
 export function repairTableStatuses(db) {

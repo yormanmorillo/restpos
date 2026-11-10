@@ -81,11 +81,11 @@ export default function PosScreen() {
     }
   }
 
-  async function handleNewTakeaway() {
+  async function handleNewTakeaway(delivery = false) {
     if (busyLabel) return;
-    setBusyLabel('Creando pedido para llevar…');
+    setBusyLabel(delivery ? 'Creando pedido de delivery…' : 'Creando pedido para llevar…');
     try {
-      const response = await api.createOrder({ type: 'llevar' });
+      const response = await api.createOrder({ type: 'llevar', delivery });
       setActiveOrder(response.order);
     } catch (createError) {
       setNotice({ type: 'error', message: createError?.message || 'No se pudo crear el pedido.' });
@@ -151,7 +151,8 @@ export default function PosScreen() {
         busyLabel={busyLabel}
         onRetry={() => void loadData({ silent: true })}
         onOpenTable={handleOpenTable}
-        onNewTakeaway={handleNewTakeaway}
+        onNewTakeaway={() => handleNewTakeaway(false)}
+        onNewDelivery={() => handleNewTakeaway(true)}
         onOpenTakeaway={handleOpenTakeaway}
         timeZone={catalog?.timezone}
       />

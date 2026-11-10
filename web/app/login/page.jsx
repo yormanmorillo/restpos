@@ -1,0 +1,265 @@
+'use client';
+
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Icon from '@/components/Icon';
+import { api } from '@/lib/api';
+import { homeForRole, ROLE_LABELS, useAuth } from '@/components/auth/AuthProvider';
+
+const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'];
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="app-loading"><span className="spinner" /></div>}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { staff, loading, refresh, setStaff } = useAuth();
+  const [options, setOptions] = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [pin, setPin] = useState('');
+  const [setupMode, setSetupMode] = useState(false);
+  const [setupName, setSetupName] = useState('');
+  const [setupPin, setSetupPin] = useState('');
+  const [setupConfirm, setSetupConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const nextPath = useMemo(() => {
+    const next = searchParams.get('next');
+    return next && next.startsWith('/') ? next : null;
+  }, [searchParams]);
+
+  const load = useCallback(async () => {
+    const status = await refresh();
+    if (status.authenticated && status.staff) {
+      router.replace(nextPath && status.staff.role !== 'kitchen' ? nextPath : homeForRole(status.staff.role));
+      return;
+    }
+    setSetupMode(Boolean(status.setupRequired));
+    if (!status.setupRequired) {
+      try {
+        const response = await api.getAuthOptions();
+        setOptions(response.staff ?? []);
+      } catch {
+        setOptions([]);
+      }
+    }
+  }, [refresh, router, nextPath]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!loading && staff) {
+      router.replace(nextPath && staff.role !== 'kitchen' ? nextPath : homeForRole(staff.role));
+    }
+  }, [staff, loading, router, nextPath]);
+
+  function pressKey(key) {
+    setError('');
+    if (key === 'clear') {
+      setPin('');
+      return;
+    }
+    if (key === 'back') {
+      setPin((previous) => previous.slice(0, -1));
+      return;
+    }
+    setPin((previous) => (previous.length >= 8 ? previous : previous + key));
+  }
+
+  async function submitPin() {
+    if (!selectedStaff || pin.length < 4) {
+      setError('Selecciona tu nombre e ingresa tu PIN.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const response = await api.login({ staffId: selectedStaff.id, pin });
+      setStaff(response.staff);
+      router.replace(nextPath && response.staff.role !== 'kitchen' ? nextPath : homeForRole(response.staff.role));
+    } catch (loginError) {
+      setError(loginError.message || 'PIN incorrecto.');
+      setPin('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitSetup(event) {
+    event.preventDefault();
+    if (!setupName.trim()) {
+      setError('Escribe el nombre del administrador.');
+      return;
+    }
+    if (!/^\d{4,8}$/.test(setupPin)) {
+      setError('El PIN debe tener entre 4 y 8 dígitos.');
+      return;
+    }
+    if (setupPin !== setupConfirm) {
+      setError('Los PIN no coinciden.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const response = await api.setupAdmin({ name: setupName.trim(), pin: setupPin });
+      setStaff(response.staff);
+      router.replace('/');
+    } catch (setupError) {
+      setError(setupError.message || 'No se pudo crear el administrador.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="login-screen">
+      <section className="login-brand">
+        <div className="login-brand-glow" />
+        <div className="login-brand-content">
+          <span className="login-logo"><Icon name="leaf" size={34} /></span>
+          <h1>Casa Roble</h1>
+          <p>Un punto de venta ágil para el servicio de hoy.</p>
+          <div className="login-brand-points">
+            <span><Icon name="check" size={17} /> Pedidos y cocina en un solo lugar</span>
+            <span><Icon name="check" size={17} /> Pagos rápidos y arqueo de caja</span>
+            <span><Icon name="check" size={17} /> Operación protegida por roles</span>
+          </div>
+        </div>
+        <span className="login-brand-footer">Casa Roble · Punto de venta</span>
+      </section>
+
+      <section className="login-panel">
+        {setupMode ? (
+          <form className="login-card setup-card" onSubmit={submitSetup}>
+            <span className="eyebrow">Configuración inicial</span>
+            <h2>Crea tu administrador</h2>
+            <p className="login-subtitle">Este PIN será tu acceso de administrador. Podrás agregar a tu equipo después.</p>
+            <label className="field">
+              <span className="field-label">Nombre</span>
+              <input
+                className="input login-text-input"
+                value={setupName}
+                onChange={(event) => setSetupName(event.target.value)}
+                placeholder="Nombre del administrador"
+                autoFocus
+                maxLength={80}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">PIN de 4 a 8 dígitos</span>
+              <input
+                className="input login-text-input"
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={setupPin}
+                onChange={(event) => setSetupPin(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="••••"
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">Confirma el PIN</span>
+              <input
+                className="input login-text-input"
+                type="password"
+                inputMode="numeric"
+                value={setupConfirm}
+                onChange={(event) => setSetupConfirm(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="••••"
+              />
+            </label>
+            {error ? <p className="form-error" role="alert">{error}</p> : null}
+            <button type="submit" className="btn btn-primary login-submit" disabled={busy}>
+              {busy ? <span className="spinner spinner-small" aria-hidden="true" /> : <Icon name="arrowLeft" size={18} className="rotate-180" />}
+              Crear administrador
+            </button>
+          </form>
+        ) : selectedStaff ? (
+          <div className="login-card pin-card">
+            <button type="button" className="login-back" onClick={() => { setSelectedStaff(null); setPin(''); setError(''); }}>
+              <Icon name="arrowLeft" size={18} /> Cambiar empleado
+            </button>
+            <div className="pin-person">
+              <span className="avatar avatar-large">{initials(selectedStaff.name)}</span>
+              <span className="eyebrow">{ROLE_LABELS[selectedStaff.role] ?? selectedStaff.role}</span>
+              <h2>Hola, {selectedStaff.name.split(' ')[0]}</h2>
+              <p className="login-subtitle">Ingresa tu PIN para abrir tu sesión.</p>
+            </div>
+            <div className="pin-dots" aria-label={`${pin.length} dígitos ingresados`}>
+              {Array.from({ length: 8 }, (_, index) => (
+                <span key={index} className={index < pin.length ? 'is-filled' : ''} />
+              ))}
+            </div>
+            <div className="pin-pad">
+              {PIN_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`pin-key ${key === 'clear' ? 'is-clear' : ''}`}
+                  onClick={() => pressKey(key)}
+                  disabled={busy}
+                  aria-label={key === 'clear' ? 'Borrar PIN' : key === 'back' ? 'Borrar último dígito' : key}
+                >
+                  {key === 'clear' ? 'Limpiar' : key === 'back' ? <Icon name="arrowLeft" size={21} /> : key}
+                </button>
+              ))}
+            </div>
+            {error ? <p className="form-error pin-error" role="alert">{error}</p> : null}
+            <button type="button" className="btn btn-primary login-submit" onClick={() => void submitPin()} disabled={busy || pin.length < 4}>
+              {busy ? <span className="spinner spinner-small" aria-hidden="true" /> : <Icon name="check" size={19} />}
+              Entrar
+            </button>
+          </div>
+        ) : (
+          <div className="login-card">
+            <span className="eyebrow">Acceso del equipo</span>
+            <h2>¿Quién está en turno?</h2>
+            <p className="login-subtitle">Selecciona tu nombre para continuar.</p>
+            {options.length === 0 ? (
+              <div className="empty-panel login-empty">
+                <Icon name="users" size={28} />
+                <p>No hay empleados activos. Pide a un administrador que te dé acceso.</p>
+              </div>
+            ) : (
+              <div className="staff-login-grid">
+                {options.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    className="staff-login-card"
+                    onClick={() => { setSelectedStaff(person); setPin(''); setError(''); }}
+                  >
+                    <span className="avatar avatar-medium">{initials(person.name)}</span>
+                    <span className="staff-login-name">{person.name}</span>
+                    <span className="staff-login-role">{ROLE_LABELS[person.role] ?? person.role}</span>
+                    <Icon name="chevronRight" size={18} />
+                  </button>
+                ))}
+              </div>
+            )}
+            {error ? <p className="form-error" role="alert">{error}</p> : null}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function initials(name = '') {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || '?';
+}

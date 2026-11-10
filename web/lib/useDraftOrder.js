@@ -32,7 +32,8 @@ function withTotals(order) {
     discountCents: totals.discountCents,
     taxCents: totals.taxCents,
     tipCents: totals.tipCents,
-    totalCents: totals.totalCents,
+    totalCents: totals.totalCents + Number(order.deliveryFeeCents ?? 0),
+    balanceCents: Math.max(0, totals.totalCents + Number(order.deliveryFeeCents ?? 0) - Number(order.amountPaidCents ?? 0)),
   };
 }
 
@@ -43,9 +44,15 @@ function toPayload(order) {
       productId: item.productId,
       quantity: item.quantity,
       notes: item.notes ?? '',
+      modifiers: (item.modifiers ?? []).map((modifier) => Number(modifier.modifierId)).filter(Boolean),
+      course: item.course ?? 1,
     })),
     customerName: order.customerName ?? '',
+    customerPhone: order.customerPhone ?? '',
     notes: order.notes ?? '',
+    delivery: Boolean(order.delivery),
+    deliveryAddress: order.deliveryAddress ?? '',
+    scheduledFor: order.scheduledFor ?? null,
     discountType: order.discountType,
     discountValue: order.discountValue,
     tipType: order.tipType,
@@ -151,15 +158,33 @@ export function useDraftOrder(initialOrder) {
     }
   }, [scheduleSave]);
 
-  const addProduct = useCallback((product, notes = '') => {
+  const addProduct = useCallback((product, notes = '', selectedModifiers = []) => {
     if (!product.active) return false;
     const cleanNotes = notes.trim();
+    const normalizedModifiers = selectedModifiers.map((modifier) => ({
+      modifierId: Number(modifier.modifierId ?? modifier.id),
+      groupName: modifier.groupName,
+      modifierName: modifier.modifierName ?? modifier.name,
+      priceDeltaCents: Number(modifier.priceDeltaCents ?? 0),
+    }));
+    const signature = normalizedModifiers
+      .map((modifier) => modifier.modifierId)
+      .sort((a, b) => a - b)
+      .join(',');
     const current = orderRef.current;
     const existing = current.items.find(
-      (item) => item.productId === product.id && item.notes.trim() === cleanNotes,
+      (item) =>
+        item.productId === product.id &&
+        item.notes.trim() === cleanNotes &&
+        (item.modifiers ?? [])
+          .map((modifier) => Number(modifier.modifierId))
+          .sort((a, b) => a - b)
+          .join(',') === signature,
     );
     if (existing && existing.quantity >= 99) return false;
 
+    const unitPriceCents =
+      product.priceCents + normalizedModifiers.reduce((sum, modifier) => sum + modifier.priceDeltaCents, 0);
     const items = existing
       ? current.items.map((item) =>
           item.clientKey === existing.clientKey
@@ -173,10 +198,14 @@ export function useDraftOrder(initialOrder) {
             clientKey: newClientKey(),
             productId: product.id,
             productName: product.name,
-            unitPriceCents: product.priceCents,
+            unitPriceCents,
             quantity: 1,
             notes: cleanNotes,
-            lineTotalCents: product.priceCents,
+            modifiers: normalizedModifiers,
+            modifiersTotalCents: normalizedModifiers.reduce((sum, modifier) => sum + modifier.priceDeltaCents, 0),
+            status: 'pending',
+            course: 1,
+            lineTotalCents: unitPriceCents,
           },
         ];
     commit((previous) => ({ ...previous, items }));
@@ -238,6 +267,14 @@ export function useDraftOrder(initialOrder) {
     commit((previous) => ({ ...previous, notes: notes.slice(0, 500) }));
   }, [commit]);
 
+  const setCustomerPhone = useCallback((customerPhone) => {
+    commit((previous) => ({ ...previous, customerPhone: customerPhone.slice(0, 30) }));
+  }, [commit]);
+
+  const setDeliveryAddress = useCallback((deliveryAddress) => {
+    commit((previous) => ({ ...previous, deliveryAddress: deliveryAddress.slice(0, 300) }));
+  }, [commit]);
+
   const flush = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -251,6 +288,14 @@ export function useDraftOrder(initialOrder) {
       if (!savingRef.current) void runSaveLoop();
     });
   }, [runSaveLoop]);
+
+  const applyServerOrder = useCallback((serverOrder) => {
+    orderRef.current = serverOrder;
+    dirtyRef.current = false;
+    setOrder(serverOrder);
+    setSaveStatus('saved');
+    setSaveError(null);
+  }, []);
 
   const retrySave = useCallback(() => {
     setSaveError(null);
@@ -292,7 +337,10 @@ export function useDraftOrder(initialOrder) {
     setTip,
     setCustomerName,
     setOrderNotes,
+    setCustomerPhone,
+    setDeliveryAddress,
     flush,
     retrySave,
+    applyServerOrder,
   };
 }

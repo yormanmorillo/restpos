@@ -8,6 +8,7 @@ import { formatMoney, paymentLabel, productQtyInOrder } from '@/lib/format';
 import { useDraftOrder } from '@/lib/useDraftOrder';
 import DiscountModal from './DiscountModal';
 import PaymentModal from './PaymentModal';
+import ProductModifierModal from './ProductModifierModal';
 
 function SaveIndicator({ status }) {
   const labels = {
@@ -32,6 +33,12 @@ function SaveIndicator({ status }) {
 
 function PaymentSuccess({ order, onNewOrder }) {
   const [openingReceipt, setOpeningReceipt] = useState(false);
+  const paymentMethods = [...new Set((order.payments ?? []).map((payment) => payment.paymentMethod))];
+  const paymentText = paymentMethods.length > 1
+    ? `Pago mixto · ${paymentMethods.map(paymentLabel).join(' + ')}`
+    : paymentLabel(order.paymentMethod);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState('');
 
   function openReceipt(autoPrint = false) {
     setOpeningReceipt(true);
@@ -49,7 +56,7 @@ function PaymentSuccess({ order, onNewOrder }) {
         <h1>{formatMoney(order.totalCents)}</h1>
         <p className="success-subtitle">
           {order.orderNumber} · {order.type === 'mesa' ? order.tableName : 'Para llevar'} ·{' '}
-          {paymentLabel(order.paymentMethod)}
+          {paymentText}
         </p>
 
         <div className="success-summary">
@@ -71,7 +78,7 @@ function PaymentSuccess({ order, onNewOrder }) {
           </div>
           <div>
             <span>Forma de pago</span>
-            <strong>{paymentLabel(order.paymentMethod)}</strong>
+            <strong>{paymentText}</strong>
           </div>
           <div>
             <span>Total</span>
@@ -96,11 +103,20 @@ function PaymentSuccess({ order, onNewOrder }) {
             <Icon name="printer" size={21} />
             Imprimir ticket
           </button>
+          <button type="button" className="btn btn-secondary btn-large" onClick={async () => {
+            setPrinting(true);
+            setPrintError('');
+            try { await api.printOrder(order.id, 'receipt'); } catch (error) { setPrintError(error.message); } finally { setPrinting(false); }
+          }} disabled={printing}>
+            {printing ? <span className="spinner spinner-small" /> : <Icon name="receipt" size={21} />}
+            Imprimir térmica
+          </button>
           <button type="button" className="btn btn-primary btn-large" onClick={() => onNewOrder(order)}>
             <Icon name="plus" size={21} />
             Nuevo pedido
           </button>
         </div>
+        {printError ? <p className="form-error">{printError}</p> : null}
         <button type="button" className="text-button" onClick={() => openReceipt(false)}>
           Solo ver el ticket
         </button>
@@ -122,8 +138,12 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
     setDiscount,
     setTip,
     setCustomerName,
+    setCustomerPhone,
+    setDeliveryAddress,
+    setOrderNotes,
     flush,
     retrySave,
+    applyServerOrder,
   } = useDraftOrder(initialOrder);
   const [categoryId, setCategoryId] = useState(() => catalog?.categories?.[0]?.id ?? 'all');
   const [search, setSearch] = useState('');
@@ -135,6 +155,9 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [leaving, setLeaving] = useState(false);
   const [actionError, setActionError] = useState('');
   const [completing, setCompleting] = useState(false);
+  const [modifierProduct, setModifierProduct] = useState(null);
+  const [sendingKitchen, setSendingKitchen] = useState(false);
+  const [kitchenNotice, setKitchenNotice] = useState('');
 
   const allProducts = useMemo(
     () =>
@@ -159,7 +182,12 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   }, [allProducts, categoryId, search]);
 
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  const cartTitle = order.type === 'mesa' ? order.tableName : 'Para llevar';
+  const pendingCount = order.items.filter((item) => item.status === 'pending').reduce((sum, item) => sum + item.quantity, 0);
+  const paidCents = Number(order.amountPaidCents ?? 0);
+  const balanceCents = Math.max(0, Number(order.totalCents) - paidCents);
+  const locked = paidCents > 0;
+  const deliveryIncomplete = order.delivery && (!order.customerPhone?.trim() || !order.deliveryAddress?.trim());
+  const cartTitle = order.type === 'mesa' ? order.tableName : order.delivery ? 'Delivery' : 'Para llevar';
 
   if (paidOrder) {
     return (
@@ -183,15 +211,20 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         type="button"
         className={`product-card ${disabled ? 'is-unavailable' : ''}`}
         onClick={() => {
-          if (!disabled) addProduct(product);
+          if (disabled || locked) return;
+          if ((product.modifierGroups ?? []).length > 0) setModifierProduct(product);
+          else addProduct(product);
         }}
-        disabled={disabled}
+        disabled={disabled || locked}
         aria-label={`${product.name}, ${formatMoney(product.priceCents)}${disabled ? ', no disponible' : '. Agregar al pedido.'}`}
       >
         <div className="product-card-heading">
           {search.trim() || categoryId === 'all' ? <span className="product-category">{product.categoryName}</span> : null}
           <h3>{product.name}</h3>
           {product.description ? <p>{product.description}</p> : null}
+          {(product.modifierGroups ?? []).length > 0 ? (
+            <span className="product-options-hint"><Icon name="sliders" size={13} /> Personalizable</span>
+          ) : null}
         </div>
         <div className="product-card-footer">
           <strong>{formatMoney(product.priceCents)}</strong>
@@ -247,9 +280,35 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   async function handlePaymentConfirm(payload) {
     await flush();
     const response = await api.payOrder(order.id, payload);
-    setPaidOrder(response.order);
-    setPaymentOpen(false);
-    setCartOpen(false);
+    if (response.order.status === 'pagada') {
+      setPaidOrder(response.order);
+      setPaymentOpen(false);
+      setCartOpen(false);
+    } else {
+      applyServerOrder(response.order);
+    }
+    return response.order;
+  }
+
+  async function handleSendKitchen() {
+    if (sendingKitchen || pendingCount === 0) return;
+    setSendingKitchen(true);
+    setActionError('');
+    setKitchenNotice('');
+    try {
+      await flush();
+      const response = await api.sendToKitchen(order.id);
+      applyServerOrder(response.order);
+      setKitchenNotice(
+        response.printWarning
+          ? `Comanda enviada. Impresión pendiente: ${response.printWarning}`
+          : 'Comanda enviada a cocina.',
+      );
+    } catch (error) {
+      setActionError(error.message || 'No se pudo enviar la comanda.');
+    } finally {
+      setSendingKitchen(false);
+    }
   }
 
   const discountText =
@@ -274,7 +333,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
 
         <div className="workspace-title">
           <span className="eyebrow">
-            {order.type === 'mesa' ? 'Pedido en mesa' : 'Pedido para llevar'} · {order.orderNumber}
+            {order.type === 'mesa' ? 'Pedido en mesa' : order.delivery ? 'Pedido delivery' : 'Pedido para llevar'} · {order.orderNumber}
           </span>
           <h1>{cartTitle}</h1>
         </div>
@@ -416,8 +475,54 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
               maxLength={100}
               value={order.customerName ?? ''}
               onChange={(event) => setCustomerName(event.target.value)}
+              disabled={locked}
             />
           </label>
+          <label className="customer-field order-notes-field">
+            <span>Notas del pedido <small>opcional</small></span>
+            <input
+              className="input"
+              type="text"
+              placeholder="Ej. cumpleaños, servir juntos…"
+              maxLength={500}
+              value={order.notes ?? ''}
+              onChange={(event) => setOrderNotes(event.target.value)}
+              disabled={locked}
+            />
+          </label>
+          {order.delivery ? (
+            <div className="delivery-fields">
+              <label className="field">
+                <span className="field-label">Teléfono</span>
+                <input
+                  className="input"
+                  type="tel"
+                  placeholder="Teléfono del cliente"
+                  maxLength={30}
+                  value={order.customerPhone ?? ''}
+                  onChange={(event) => setCustomerPhone(event.target.value)}
+                  disabled={locked}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label">Dirección de entrega</span>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Calle, número, colonia y referencias"
+                  maxLength={300}
+                  value={order.deliveryAddress ?? ''}
+                  onChange={(event) => setDeliveryAddress(event.target.value)}
+                  disabled={locked}
+                />
+              </label>
+            </div>
+          ) : order.customerPhone ? (
+            <div className="customer-extra"><span><Icon name="phone" size={14} /> {order.customerPhone}</span></div>
+          ) : null}
+          {locked ? (
+            <div className="ticket-lock-note"><Icon name="lock" size={15} /> Cuenta bloqueada por un pago parcial. Cobra el saldo para cerrarla.</div>
+          ) : null}
 
           <div className="ticket-items">
             {order.items.length === 0 ? (
@@ -441,6 +546,12 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                     <strong className="ticket-item-total">{formatMoney(item.lineTotalCents)}</strong>
                   </div>
 
+                  {(item.modifiers ?? []).length > 0 ? (
+                    <p className="ticket-item-modifiers">
+                      {item.modifiers.map((modifier) => modifier.modifierName).join(' · ')}
+                    </p>
+                  ) : null}
+
                   {item.notes ? (
                     <p className="ticket-item-note">
                       <Icon name="note" size={14} />
@@ -448,12 +559,21 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                     </p>
                   ) : null}
 
+                  <div className="ticket-item-meta">
+                    {item.status === 'pending' ? <span className="item-status is-pending">Por enviar</span> : null}
+                    {item.status === 'sent' ? <span className="item-status is-sent">En cocina</span> : null}
+                    {item.status === 'preparing' ? <span className="item-status is-preparing">Preparando</span> : null}
+                    {item.status === 'ready' ? <span className="item-status is-ready">Listo para servir</span> : null}
+                    {item.status === 'served' ? <span className="item-status is-served">Servido</span> : null}
+                  </div>
+
                   <div className="ticket-item-actions">
                     <div className="qty-stepper">
                       <button
                         type="button"
                         onClick={() => setItemQuantity(item.clientKey, item.quantity - 1)}
                         aria-label={`Quitar una unidad de ${item.productName}`}
+                        disabled={locked}
                       >
                         <Icon name="minus" size={18} />
                       </button>
@@ -462,6 +582,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                         type="button"
                         onClick={() => setItemQuantity(item.clientKey, item.quantity + 1)}
                         aria-label={`Agregar una unidad de ${item.productName}`}
+                        disabled={locked}
                       >
                         <Icon name="plus" size={18} />
                       </button>
@@ -470,6 +591,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                       type="button"
                       className={`item-action ${noteEditor?.clientKey === item.clientKey ? 'is-active' : ''}`}
                       onClick={() => (noteEditor?.clientKey === item.clientKey ? setNoteEditor(null) : openNoteEditor(item))}
+                      disabled={locked}
                     >
                       <Icon name="note" size={16} />
                       Nota
@@ -479,6 +601,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                       className="item-action item-remove"
                       onClick={() => removeItem(item.clientKey)}
                       aria-label={`Eliminar ${item.productName}`}
+                      disabled={locked}
                     >
                       <Icon name="trash" size={17} />
                     </button>
@@ -536,7 +659,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
               <span>Subtotal</span>
               <span>{formatMoney(order.subtotalCents)}</span>
             </div>
-            <button type="button" className="summary-action-row" onClick={() => setDiscountOpen(true)}>
+            <button type="button" className="summary-action-row" onClick={() => setDiscountOpen(true)} disabled={locked}>
               <span>
                 Descuento {discountText ? <em>{discountText}</em> : null}
               </span>
@@ -548,10 +671,28 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
               <span>Impuesto ({order.taxRateBps / 100}%)</span>
               <span>{formatMoney(order.taxCents)}</span>
             </div>
+            {order.deliveryFeeCents > 0 ? (
+              <div className="summary-row">
+                <span>Costo de entrega</span>
+                <span>{formatMoney(order.deliveryFeeCents)}</span>
+              </div>
+            ) : null}
             <div className="summary-row">
               <span>Propina</span>
               <span>{order.tipCents > 0 ? formatMoney(order.tipCents) : 'Se elige al cobrar'}</span>
             </div>
+            {paidCents > 0 ? (
+              <>
+                <div className="summary-row">
+                  <span>Pagado</span>
+                  <span>{formatMoney(paidCents)}</span>
+                </div>
+                <div className="summary-row summary-balance">
+                  <span>Saldo</span>
+                  <span>{formatMoney(balanceCents)}</span>
+                </div>
+              </>
+            ) : null}
             <div className="summary-row summary-total">
               <span>Total</span>
               <strong>{formatMoney(order.totalCents)}</strong>
@@ -564,8 +705,23 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
               <p>{actionError}</p>
             </div>
           ) : null}
+          {kitchenNotice ? (
+            <div className="alert alert-success ticket-alert" role="status">
+              <Icon name="check" size={18} />
+              <p>{kitchenNotice}</p>
+            </div>
+          ) : null}
 
           <div className="ticket-actions">
+            {deliveryIncomplete ? (
+              <p className="delivery-required"><Icon name="alert" size={15} /> Captura teléfono y dirección para cobrar el delivery.</p>
+            ) : null}
+            {pendingCount > 0 ? (
+              <button type="button" className="btn btn-secondary btn-send-kitchen" onClick={() => void handleSendKitchen()} disabled={sendingKitchen || leaving}>
+                {sendingKitchen ? <span className="spinner spinner-small" /> : <Icon name="send" size={19} />}
+                Enviar a cocina · {pendingCount}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-primary btn-charge"
@@ -573,10 +729,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 setActionError('');
                 setPaymentOpen(true);
               }}
-              disabled={order.items.length === 0 || leaving}
+              disabled={order.items.length === 0 || leaving || deliveryIncomplete}
             >
               <Icon name="cash" size={22} />
-              Cobrar {formatMoney(order.totalCents)}
+              {paidCents > 0 ? `Cobrar saldo ${formatMoney(balanceCents)}` : `Cobrar ${formatMoney(order.totalCents)}`}
             </button>
             <button type="button" className="text-button" onClick={() => void handleExit()} disabled={leaving || saving}>
               Guardar y volver a mesas
@@ -612,6 +768,12 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         order={order}
         onSetTip={setTip}
         onConfirm={handlePaymentConfirm}
+      />
+      <ProductModifierModal
+        open={Boolean(modifierProduct)}
+        product={modifierProduct}
+        onClose={() => setModifierProduct(null)}
+        onAdd={(product, notes, modifiers) => addProduct(product, notes, modifiers)}
       />
     </div>
   );

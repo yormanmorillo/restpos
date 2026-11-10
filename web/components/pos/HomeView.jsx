@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Icon from '@/components/Icon';
 import { formatMoney, formatTime, pluralize } from '@/lib/format';
 
@@ -31,7 +32,7 @@ function TableCard({ table, onOpen, disabled, timeZone }) {
           <>
             <span className="table-total">{formatMoney(table.openOrder.totalCents)}</span>
             <span className="table-detail">
-              {table.openOrder.orderNumber} · {table.openOrder.itemCount}{' '}
+              {table.openOrder.delivery ? 'Delivery · ' : ''}{table.openOrder.orderNumber} · {table.openOrder.itemCount}{' '}
               {pluralize(table.openOrder.itemCount, 'artículo', 'artículos')} ·{' '}
               {formatTime(table.openOrder.openedAt, timeZone)}
             </span>
@@ -69,9 +70,19 @@ export default function HomeView({
   onRetry,
   onOpenTable,
   onNewTakeaway,
+  onNewDelivery,
   onOpenTakeaway,
   timeZone,
 }) {
+  const [areaFilter, setAreaFilter] = useState('all');
+  const areas = useMemo(() => {
+    const map = new Map();
+    for (const table of tables) {
+      if (table.areaId) map.set(table.areaId, table.areaName);
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [tables]);
+  const visibleTables = areaFilter === 'all' ? tables : tables.filter((table) => table.areaId === areaFilter);
   const freeCount = tables.filter((table) => table.status === 'libre').length;
   const occupiedCount = tables.length - freeCount;
 
@@ -83,10 +94,16 @@ export default function HomeView({
           <h1>Mesas y pedidos</h1>
           <p>Selecciona una mesa o abre un pedido para llevar. Todo se guarda automáticamente.</p>
         </div>
-        <button type="button" className="btn btn-primary btn-takeaway" onClick={onNewTakeaway} disabled={Boolean(busyLabel)}>
-          <Icon name="bag" size={22} />
-          Nuevo para llevar
-        </button>
+        <div className="heading-actions home-actions">
+          <button type="button" className="btn btn-secondary btn-takeaway" onClick={onNewTakeaway} disabled={Boolean(busyLabel)}>
+            <Icon name="bag" size={21} />
+            Para llevar
+          </button>
+          <button type="button" className="btn btn-primary btn-takeaway" onClick={onNewDelivery} disabled={Boolean(busyLabel)}>
+            <Icon name="pin" size={21} />
+            Delivery
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -123,10 +140,22 @@ export default function HomeView({
           <h2 id="tables-title">Salón</h2>
           <span className="section-hint">Toca una mesa para abrir su cuenta</span>
         </div>
+        {areas.length > 1 ? (
+          <div className="area-strip" role="tablist" aria-label="Áreas del salón">
+            <button type="button" role="tab" aria-selected={areaFilter === 'all'} className={`area-chip ${areaFilter === 'all' ? 'is-active' : ''}`} onClick={() => setAreaFilter('all')}>
+              Todas <span>{tables.length}</span>
+            </button>
+            {areas.map((area) => (
+              <button key={area.id} type="button" role="tab" aria-selected={areaFilter === area.id} className={`area-chip ${areaFilter === area.id ? 'is-active' : ''}`} onClick={() => setAreaFilter(area.id)}>
+                {area.name} <span>{tables.filter((table) => table.areaId === area.id).length}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="tables-grid">
           {loading
             ? Array.from({ length: 8 }, (_, index) => <TableSkeleton key={index} />)
-            : tables.map((table) => (
+            : visibleTables.map((table) => (
                 <TableCard
                   key={table.id}
                   table={table}
@@ -162,10 +191,11 @@ export default function HomeView({
                   <Icon name="bag" size={22} />
                 </span>
                 <span className="takeaway-copy">
-                  <strong>{order.customerName || 'Cliente sin nombre'}</strong>
+                  <strong>{order.customerName || (order.delivery ? 'Delivery sin nombre' : 'Cliente sin nombre')}</strong>
                   <span>
-                    {order.orderNumber} · {order.itemCount}{' '}
+                    {order.delivery ? 'Delivery' : 'Para llevar'} · {order.orderNumber} · {order.itemCount}{' '}
                     {pluralize(order.itemCount, 'artículo', 'artículos')}
+                    {order.source === 'online' ? ' · En línea' : ''}
                   </span>
                 </span>
                 <span className="takeaway-meta">

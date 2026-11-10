@@ -6,7 +6,7 @@ const projectRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' } : {}),
   outputFileTracingRoot: projectRoot,
   transpilePackages: ['@restpos/shared'],
   async rewrites() {

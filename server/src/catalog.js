@@ -1,4 +1,5 @@
 import { serializeCategory, serializeProduct } from './serializers.js';
+import { getProductModifierGroups } from './modifiers.js';
 
 export function getCatalog(db, config) {
   const categories = db
@@ -13,6 +14,10 @@ export function getCatalog(db, config) {
       ORDER BY c.sort_order, p.sort_order, p.name
     `)
     .all();
+  const modifierGroups = getProductModifierGroups(
+    db,
+    products.map((product) => Number(product.id)),
+  );
   const byCategory = new Map();
   for (const category of categories) {
     byCategory.set(Number(category.id), {
@@ -21,7 +26,10 @@ export function getCatalog(db, config) {
     });
   }
   for (const product of products) {
-    byCategory.get(Number(product.category_id))?.products.push(serializeProduct(product));
+    byCategory.get(Number(product.category_id))?.products.push({
+      ...serializeProduct(product),
+      modifierGroups: modifierGroups.get(Number(product.id)) ?? [],
+    });
   }
   return {
     categories: [...byCategory.values()],

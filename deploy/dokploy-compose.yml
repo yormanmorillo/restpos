@@ -11,6 +11,8 @@ services:
       DATABASE_PATH: /data/restpos.db
       APP_TIMEZONE: America/Mexico_City
       TAX_RATE_BPS: "1600"
+      COOKIE_SECURE: "true"
+      SESSION_TTL_HOURS: "12"
     volumes:
       - restpos_data:/data
     networks:

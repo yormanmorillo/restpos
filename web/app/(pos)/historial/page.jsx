@@ -138,6 +138,10 @@ export default function HistoryPage() {
               lang="es-MX"
             />
           </label>
+          <a className="btn btn-secondary" href={api.getDailyReportCsvUrl(date || report?.date)} download>
+            <Icon name="download" size={19} />
+            Exportar CSV
+          </a>
           <button type="button" className="btn btn-secondary" onClick={() => void loadDay(date)} disabled={loading}>
             <Icon name="refresh" size={19} className={loading ? 'spin' : ''} />
             Actualizar
@@ -285,6 +289,55 @@ export default function HistoryPage() {
               </div>
             </section>
           </div>
+
+          <div className="history-columns">
+            <section className="panel" aria-labelledby="staff-report-title">
+              <div className="panel-heading"><div><h2 id="staff-report-title">Ventas por empleado</h2><p>Rendimiento del turno</p></div></div>
+              {report.staff.length === 0 ? <div className="empty-panel"><Icon name="users" size={28} /><p>Sin ventas registradas.</p></div> : (
+                <div className="staff-report-list">
+                  {report.staff.map((person) => (
+                    <div key={person.staffId ?? 'none'} className="staff-report-row">
+                      <span className="avatar avatar-small">{person.staffName.slice(0, 2).toUpperCase()}</span>
+                      <div><strong>{person.staffName}</strong><span>{person.orderCount} pedidos</span></div>
+                      <div className="staff-report-figures"><strong>{formatMoney(person.salesCents)}</strong><span>{formatMoney(person.tipCents)} propinas</span></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section className="panel" aria-labelledby="categories-report-title">
+              <div className="panel-heading"><div><h2 id="categories-report-title">Ventas por categoría</h2><p>Mezcla del menú</p></div></div>
+              {report.categories.length === 0 ? <div className="empty-panel"><Icon name="tag" size={28} /><p>Sin ventas registradas.</p></div> : (
+                <div className="category-report-list">
+                  {report.categories.map((category) => {
+                    const max = report.categories[0]?.revenueCents || 1;
+                    return (
+                      <div key={category.name} className="category-report-row">
+                        <div><strong>{category.name}</strong><span>{category.quantity} uds.</span><strong>{formatMoney(category.revenueCents)}</strong></div>
+                        <div className="rank-bar"><span style={{ width: `${Math.max(5, Math.round((category.revenueCents / max) * 100))}%` }} /></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <section className="panel hourly-panel" aria-labelledby="hourly-title">
+            <div className="panel-heading"><div><h2 id="hourly-title">Ventas por hora</h2><p>Identifica las horas de mayor demanda</p></div><span className="panel-badge">Hoy</span></div>
+            <div className="hourly-chart">
+              {(() => {
+                const max = Math.max(...report.hours.map((hour) => hour.salesCents), 1);
+                return report.hours.filter((hour) => hour.orderCount > 0 || (Number(hour.hour) >= 8 && Number(hour.hour) <= 23)).map((hour) => (
+                  <div key={hour.hour} className={`hourly-bar-wrap ${hour.orderCount ? 'has-sales' : ''}`}>
+                    <span className="hourly-value">{hour.salesCents > 0 ? formatMoney(hour.salesCents) : ''}</span>
+                    <div className="hourly-bar" style={{ height: `${Math.max(3, Math.round((hour.salesCents / max) * 100))}%` }} title={`${hour.orderCount} pedidos`} />
+                    <span className="hourly-label">{String(hour.hour).padStart(2, '0')}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </section>
 
           <section className="panel sales-panel" aria-labelledby="sales-title">
             <div className="panel-heading">

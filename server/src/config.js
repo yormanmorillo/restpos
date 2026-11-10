@@ -32,6 +32,8 @@ export function loadConfig(overrides = {}) {
     timezone: readTimezone(),
     currency: 'MXN',
     taxRateBps: readInteger('TAX_RATE_BPS', DEFAULT_TAX_RATE_BPS, { min: 0, max: 10000 }),
+    sessionTtlHours: readInteger('SESSION_TTL_HOURS', 12, { min: 1, max: 168 }),
+    cookieSecure: process.env.COOKIE_SECURE === 'true',
     ...overrides,
   };
 }

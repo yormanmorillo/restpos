@@ -33,7 +33,11 @@ export const createOrderSchema = z
     type: z.enum(['mesa', 'llevar'], { error: 'El tipo de pedido debe ser "mesa" o "llevar".' }),
     tableId: z.number().int().positive('La mesa debe ser un identificador válido.').nullable().optional(),
     customerName: text(100, 'El nombre del cliente').optional().default(''),
+    customerPhone: text(30, 'El teléfono').optional().default(''),
     notes: text(500, 'Las notas del pedido').optional().default(''),
+    delivery: z.boolean().optional().default(false),
+    deliveryAddress: text(300, 'La dirección de entrega').optional().default(''),
+    scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.type === 'mesa' && !value.tableId) {
@@ -50,6 +54,20 @@ export const createOrderSchema = z
         message: 'Un pedido para llevar no puede tener mesa.',
       });
     }
+    if (value.delivery && value.type !== 'llevar') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['delivery'],
+        message: 'Solo un pedido para llevar puede ser a domicilio.',
+      });
+    }
+    if (value.delivery && !value.deliveryAddress) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['deliveryAddress'],
+        message: 'La dirección de entrega es obligatoria.',
+      });
+    }
   });
 
 export const draftItemSchema = z.object({
@@ -61,6 +79,12 @@ export const draftItemSchema = z.object({
     .min(1, 'La cantidad mínima es 1.')
     .max(MAX_ITEM_QUANTITY, `La cantidad máxima por línea es ${MAX_ITEM_QUANTITY}.`),
   notes: text(200, 'La nota del producto').optional().default(''),
+  modifiers: z
+    .array(z.number().int().positive('El modificador no es válido.'))
+    .max(20, 'Demasiados modificadores en una línea.')
+    .optional()
+    .default([]),
+  course: z.number().int().min(1).max(20).optional().default(1),
 });
 
 export const draftSchema = z
@@ -70,7 +94,11 @@ export const draftSchema = z
       .max(MAX_LINE_ITEMS, `El pedido no puede tener más de ${MAX_LINE_ITEMS} líneas.`)
       .optional(),
     customerName: text(100, 'El nombre del cliente').optional(),
+    customerPhone: text(30, 'El teléfono').optional(),
     notes: text(500, 'Las notas del pedido').optional(),
+    delivery: z.boolean().optional(),
+    deliveryAddress: text(300, 'La dirección de entrega').optional(),
+    scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
     discountType: z.enum(['none', 'percent', 'fixed'], { error: 'El tipo de descuento no es válido.' }).optional(),
     discountValue: adjustmentValue.optional(),
     tipType: z.enum(['none', 'percent', 'fixed'], { error: 'El tipo de propina no es válido.' }).optional(),
@@ -116,12 +144,19 @@ export const payOrderSchema = z.object({
     .min(0, 'El efectivo recibido no puede ser negativo.')
     .max(10_000_000, 'El efectivo recibido es demasiado grande.')
     .optional(),
+  amountCents: z
+    .number({ error: 'El monto del pago debe ser un número entero en centavos.' })
+    .int('El monto del pago debe expresarse en centavos.')
+    .positive('El monto del pago debe ser mayor que cero.')
+    .max(10_000_000, 'El monto del pago es demasiado grande.')
+    .optional(),
 });
 
 export const orderListQuerySchema = z.object({
   status: z.enum(['abierta', 'pagada', 'anulada']).optional(),
   type: z.enum(['mesa', 'llevar']).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe tener formato AAAA-MM-DD.').optional(),
+  source: z.enum(['pos', 'online']).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).max(1_000_000).optional().default(0),
 });
@@ -180,3 +215,142 @@ export function assertValidDate(value) {
   }
   return value;
 }
+
+const STAFF_ROLES = ['admin', 'manager', 'cashier', 'server', 'kitchen'];
+const PIN_PATTERN = /^\d{4,8}$/;
+
+export const loginSchema = z.object({
+  staffId: z.number().int().positive('Selecciona un empleado.'),
+  pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.'),
+});
+
+export const setupSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.'),
+  pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.'),
+});
+
+export const staffCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.'),
+  role: z.enum(STAFF_ROLES, { error: 'Selecciona un rol válido.' }),
+  pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.'),
+  active: z.boolean().optional().default(true),
+});
+
+export const staffUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.').optional(),
+    role: z.enum(STAFF_ROLES, { error: 'Selecciona un rol válido.' }).optional(),
+    pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.').optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');
+
+export const areaCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre del área es obligatorio.').max(60, 'El nombre es demasiado largo.'),
+  sortOrder: z.number().int().min(-9999).max(9999).optional().default(0),
+  active: z.boolean().optional().default(true),
+});
+
+export const areaUpdateSchema = areaCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');
+
+export const settingsUpdateSchema = z.object({
+  settings: z.record(z.string(), z.string()),
+});
+
+
+export const shiftOpenSchema = z.object({
+  openingCents: z.number().int().min(0, 'El fondo inicial no puede ser negativo.').max(10_000_000),
+  notes: text(300, 'Las notas').optional().default(''),
+});
+
+export const shiftCloseSchema = z.object({
+  countedCents: z.number().int().min(0, 'El efectivo contado no puede ser negativo.').max(10_000_000),
+  notes: text(300, 'Las notas').optional().default(''),
+});
+
+export const kitchenItemUpdateSchema = z.object({
+  status: z.enum(['sent', 'preparing', 'ready', 'served'], { error: 'Estado de cocina inválido.' }),
+});
+
+export const kitchenTicketUpdateSchema = z.object({
+  status: z.enum(['preparing', 'ready', 'served'], { error: 'Estado de cocina inválido.' }),
+});
+
+export const modifierOptionSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre de la opción es obligatorio.').max(80),
+  priceDeltaCents: z.number().int().min(0).max(100_000).optional().default(0),
+  sortOrder: z.number().int().min(-9999).max(9999).optional(),
+  active: z.boolean().optional().default(true),
+});
+
+export const modifierGroupCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre del grupo es obligatorio.').max(80),
+  selectionType: z.enum(['single', 'multiple'], { error: 'El tipo de selección no es válido.' }),
+  required: z.boolean().optional().default(false),
+  minSelect: z.number().int().min(0).max(20).optional().default(0),
+  maxSelect: z.number().int().min(1).max(20).optional().default(1),
+  sortOrder: z.number().int().min(-9999).max(9999).optional().default(0),
+  active: z.boolean().optional().default(true),
+  options: z.array(modifierOptionSchema).min(1, 'Agrega al menos una opción.').max(50),
+});
+
+export const modifierGroupUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    selectionType: z.enum(['single', 'multiple']).optional(),
+    required: z.boolean().optional(),
+    minSelect: z.number().int().min(0).max(20).optional(),
+    maxSelect: z.number().int().min(1).max(20).optional(),
+    sortOrder: z.number().int().min(-9999).max(9999).optional(),
+    active: z.boolean().optional(),
+    options: z.array(modifierOptionSchema).min(1).max(50).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');
+
+export const productModifierGroupsSchema = z.object({
+  groupIds: z.array(z.number().int().positive()).max(20),
+});
+
+export const publicOrderItemSchema = draftItemSchema.omit({ clientKey: true }).extend({
+  quantity: z.number().int().min(1).max(30, 'La cantidad máxima en línea es 30.'),
+});
+
+export const publicOrderSchema = z
+  .object({
+    fulfillment: z.enum(['pickup', 'delivery'], { error: 'Selecciona recoger o entrega a domicilio.' }),
+    customerName: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
+    customerPhone: z.string().trim().min(7, 'El teléfono es obligatorio.').max(30),
+    deliveryAddress: text(300, 'La dirección').optional().default(''),
+    notes: text(500, 'Las notas').optional().default(''),
+    scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
+    items: z.array(publicOrderItemSchema).min(1, 'Agrega al menos un producto.').max(50),
+  })
+  .superRefine((value, ctx) => {
+    if (value.fulfillment === 'delivery' && value.deliveryAddress.trim().length < 8) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['deliveryAddress'],
+        message: 'Escribe una dirección de entrega completa.',
+      });
+    }
+  });
+
+export const tableCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre de la mesa es obligatorio.').max(40),
+  capacity: z.number().int().min(1, 'La capacidad mínima es 1.').max(50),
+  areaId: z.number().int().positive('Selecciona un área.').nullable().optional(),
+  position: z.number().int().min(0).max(9999).optional().default(0),
+  active: z.boolean().optional().default(true),
+});
+
+export const tableUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(40).optional(),
+    capacity: z.number().int().min(1).max(50).optional(),
+    areaId: z.number().int().positive().nullable().optional(),
+    position: z.number().int().min(0).max(9999).optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');
