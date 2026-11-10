@@ -8,7 +8,7 @@ export const metadata = {
     template: '%s · Casa Roble POS',
   },
   description: 'Punto de venta moderno para restaurantes. Pedidos, cocina, caja y reportes.',
-  icons: { icon: '/matmax-logo.jpeg' },
+  icons: { icon: '/matmax-favicon.png', apple: '/matmax-touch.png' },
 };
 
 export const viewport = {

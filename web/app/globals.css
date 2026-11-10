@@ -5605,3 +5605,14 @@ h1 { font-weight: 700; }
 .brand-mark-logo { width: 100%; height: 100%; object-fit: contain; }
 .login-logo img { width: 100%; height: 100%; object-fit: contain; }
 .login-logo { padding: 8px; background: #fff; border-color: rgba(255,255,255,0.25); }
+
+/* Tamaños optimizados del logo */
+.brand-mark { width: 92px; height: 40px; flex: 0 0 auto; padding: 4px; border: 1px solid var(--border); border-radius: 11px; background: #fff; }
+.brand-mark-logo { width: 100%; height: 100%; object-fit: contain; }
+.login-logo { width: 128px; height: 68px; padding: 8px; border-radius: 18px; }
+.login-logo img { width: 100%; height: 100%; object-fit: contain; }
+.developed-by img { height: 13px; width: auto; object-fit: contain; }
+@media (max-width: 620px) {
+  .brand-mark { width: 58px; height: 34px; padding: 3px; }
+  .login-logo { width: 108px; height: 58px; padding: 7px; }
+}

@@ -70,7 +70,7 @@ export default function AppHeader() {
       <div className="app-header-inner">
         <Link href={staff.role === 'kitchen' ? '/cocina' : staff.role === 'owner' ? '/owner' : '/'} className="brand" aria-label="Casa Roble">
           <span className="brand-mark">
-            <img src="/matmax-logo.jpeg" alt="" className="brand-mark-logo" />
+            <img src="/matmax-logo.jpg" alt="" className="brand-mark-logo" />
           </span>
           <span className="brand-copy">
             <strong>Casa Roble</strong>

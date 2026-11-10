@@ -165,7 +165,7 @@ export default function PublicOrderPage() {
     <main className="public-page">
       <header className="public-header">
         <a href="/pedir" className="public-brand">
-          <span className="brand-mark"><img src="/matmax-logo.jpeg" alt="" className="brand-mark-logo" /></span>
+          <span className="brand-mark"><img src="/matmax-logo.jpg" alt="" className="brand-mark-logo" /></span>
           <span><strong>{data?.restaurant?.name ?? 'Casa Roble'}</strong><small>Pedidos en línea</small></span>
         </a>
         <span className="public-header-note">Hecho con ingredientes de la casa</span>

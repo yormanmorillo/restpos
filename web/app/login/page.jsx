@@ -126,7 +126,7 @@ function LoginContent() {
       <section className="login-brand">
         <div className="login-brand-glow" />
         <div className="login-brand-content">
-          <span className="login-logo"><img src="/matmax-logo.jpeg" alt="MATMAX IT Solutions" /></span>
+          <span className="login-logo"><img src="/matmax-logo.jpg" alt="MATMAX IT Solutions" /></span>
           <h1>Casa Roble</h1>
           <p>Un punto de venta ágil para el servicio de hoy.</p>
           <div className="login-brand-points">
