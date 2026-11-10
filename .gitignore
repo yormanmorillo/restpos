@@ -1,0 +1,15 @@
+node_modules/
+.npm-cache/
+.next/
+out/
+server/data/*.db
+server/data/*.db-wal
+server/data/*.db-shm
+.env
+.env.local
+coverage/
+*.log
+.DS_Store
+
+.artifacts/
+.deploy/

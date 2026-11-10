@@ -1,0 +1,28 @@
+{
+  "name": "casa-roble-pos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "POS táctil para restaurantes: Next.js + Express + SQLite",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c green,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
+    "dev:api": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "start": "concurrently -k -n API,WEB -c green,cyan \"npm run start -w server\" \"npm run start -w web\"",
+    "test": "npm run test -w server",
+    "test:watch": "npm run test:watch -w server",
+    "db:reset": "npm run db:reset -w server",
+    "docker:build": "docker build --target api -t restpos-api:latest . && docker build --target web -t restpos-web:latest ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

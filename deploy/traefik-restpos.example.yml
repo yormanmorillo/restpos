@@ -1,0 +1,17 @@
+# Middleware de ejemplo para el stack RestPost.
+# Instalar en /etc/dokploy/traefik/dynamic/restpos-auth.yml del VPS.
+# Generar el hash con: openssl passwd -apr1 'TU_CONTRASEÑA'
+http:
+  middlewares:
+    restpos-auth:
+      basicAuth:
+        users:
+          - 'casaroble:$apr1$REEMPLAZA_ESTE_HASH'
+    restpos-security:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin

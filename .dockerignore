@@ -1,0 +1,13 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+.npm-cache
+.next
+**/.next
+.artifacts
+.deploy
+docs
+server/data
+*.log
+.DS_Store

@@ -1,0 +1,60 @@
+name: restpos
+
+services:
+  api:
+    image: restpos-api:latest
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_PATH: /data/restpos.db
+      APP_TIMEZONE: America/Mexico_City
+      TAX_RATE_BPS: "1600"
+    volumes:
+      - restpos_data:/data
+    networks:
+      - dokploy-network
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    image: restpos-web:latest
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  restpos_data:
+    name: restpos_data
+
+networks:
+  dokploy-network:
+    external: true
