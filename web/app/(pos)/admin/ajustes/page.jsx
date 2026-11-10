@@ -58,17 +58,17 @@ export default function SettingsPage() {
       }
       const payload = {
         restaurant_name: settings.restaurant_name,
-        online_ordering_enabled: String(Boolean(settings.online_ordering_enabled)),
-        online_pickup_enabled: String(Boolean(settings.online_pickup_enabled)),
-        online_delivery_enabled: String(Boolean(settings.online_delivery_enabled)),
+        online_ordering_enabled: String(bool('online_ordering_enabled')),
+        online_pickup_enabled: String(bool('online_pickup_enabled')),
+        online_delivery_enabled: String(bool('online_delivery_enabled')),
         delivery_fee_cents: String(deliveryFeeCents),
-        printer_enabled: String(Boolean(settings.printer_enabled)),
+        printer_enabled: String(bool('printer_enabled')),
         kitchen_printer_host: settings.kitchen_printer_host ?? '',
         kitchen_printer_port: String(settings.kitchen_printer_port || '9100'),
         receipt_printer_host: settings.receipt_printer_host ?? '',
         receipt_printer_port: String(settings.receipt_printer_port || '9100'),
-        auto_print_kitchen: String(Boolean(settings.auto_print_kitchen)),
-        require_shift: String(Boolean(settings.require_shift)),
+        auto_print_kitchen: String(bool('auto_print_kitchen')),
+        require_shift: String(bool('require_shift')),
       };
       const response = await api.updateSettings(payload);
       setSettings({ ...response.settings, delivery_fee_display: centsToInput(Number(response.settings.delivery_fee_cents)) });
