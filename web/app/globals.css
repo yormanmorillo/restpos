@@ -4581,6 +4581,10 @@ h1 { font-weight: 700; }
 .payment-error-copy { display: flex; flex-direction: column; gap: 4px; }
 .payment-error-copy .text-button { align-self: flex-start; }
 .text-danger { color: var(--red) !important; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:not(:disabled):hover { background: #a82d24; }
+.cancel-order-link { margin-top: 2px; }
+.confirm-copy { color: var(--ink-soft); font-size: 0.82rem; line-height: 1.5; }
 .text-success { color: var(--green) !important; }
 .success-actions { flex-wrap: wrap; }
 .success-actions .btn { min-width: 0; }

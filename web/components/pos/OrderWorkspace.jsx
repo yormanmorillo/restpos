@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Icon from '@/components/Icon';
+import Modal from '@/components/Modal';
 import { formatPercentBps } from '@restpos/shared/money';
 import { api } from '@/lib/api';
 import { formatMoney, paymentLabel, productQtyInOrder } from '@/lib/format';
@@ -9,6 +10,7 @@ import { useDraftOrder } from '@/lib/useDraftOrder';
 import DiscountModal from './DiscountModal';
 import PaymentModal from './PaymentModal';
 import ProductModifierModal from './ProductModifierModal';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 function SaveIndicator({ status }) {
   const labels = {
@@ -126,6 +128,7 @@ function PaymentSuccess({ order, onNewOrder }) {
 }
 
 export default function OrderWorkspace({ initialOrder, catalog, onExit, onCompleted }) {
+  const { staff } = useAuth();
   const {
     order,
     saving,
@@ -158,6 +161,8 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [modifierProduct, setModifierProduct] = useState(null);
   const [sendingKitchen, setSendingKitchen] = useState(false);
   const [kitchenNotice, setKitchenNotice] = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const allProducts = useMemo(
     () =>
@@ -288,6 +293,20 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       applyServerOrder(response.order);
     }
     return response.order;
+  }
+
+  async function handleCancelOrder() {
+    setCancelling(true);
+    setActionError('');
+    try {
+      await api.cancelOrder(order.id);
+      setCancelOpen(false);
+      onExit();
+    } catch (error) {
+      setActionError(error.message || 'No se pudo anular el pedido.');
+    } finally {
+      setCancelling(false);
+    }
   }
 
   async function handleSendKitchen() {
@@ -737,6 +756,11 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
             <button type="button" className="text-button" onClick={() => void handleExit()} disabled={leaving || saving}>
               Guardar y volver a mesas
             </button>
+            {['admin', 'manager'].includes(staff?.role) && paidCents === 0 ? (
+              <button type="button" className="text-button text-danger cancel-order-link" onClick={() => setCancelOpen(true)} disabled={leaving || saving}>
+                Anular pedido
+              </button>
+            ) : null}
           </div>
         </aside>
       </div>
@@ -775,6 +799,28 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         onClose={() => setModifierProduct(null)}
         onAdd={(product, notes, modifiers) => addProduct(product, notes, modifiers)}
       />
+      <Modal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title="Anular pedido"
+        subtitle={`${order.orderNumber} · ${cartTitle}`}
+        size="sm"
+        closeDisabled={cancelling}
+        footer={
+          <div className="modal-actions">
+            <span />
+            <div className="modal-actions-right">
+              <button type="button" className="btn btn-secondary" onClick={() => setCancelOpen(false)} disabled={cancelling}>Conservar pedido</button>
+              <button type="button" className="btn btn-danger" onClick={() => void handleCancelOrder()} disabled={cancelling}>
+                {cancelling ? <span className="spinner spinner-small" /> : <Icon name="trash" size={18} />}
+                Anular definitivamente
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <p className="confirm-copy">Se anulará el pedido completo y se liberará la mesa. Esta acción queda registrada en auditoría y no se puede deshacer.</p>
+      </Modal>
     </div>
   );
 }
