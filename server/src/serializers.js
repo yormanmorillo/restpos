@@ -119,6 +119,8 @@ export function serializeOrder(row, items = []) {
     cashReceivedCents: row.cash_received_cents === null ? null : Number(row.cash_received_cents),
     changeCents: row.change_cents === null ? null : Number(row.change_cents),
     businessDate: row.business_date,
+    publicReceiptToken: row.public_receipt_token ?? null,
+    publicReceiptUrl: row.public_receipt_token ? `/r/${row.public_receipt_token}` : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     paidAt: row.paid_at ?? null,

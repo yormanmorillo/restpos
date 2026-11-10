@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { calculateLineTotal, calculateTotals, calculateChange } from '@restpos/shared/pricing';
 import { businessDateFor } from './business-date.js';
 import { transaction } from './db.js';
@@ -9,6 +9,7 @@ import { requireOpenShiftForPayment } from './shifts.js';
 import { audit } from './audit.js';
 import { getSetting } from './settings.js';
 import { resolveActivePaymentMethod } from './payment-methods.js';
+import { consumeInventoryForOrder } from './inventory.js';
 
 const ORDER_SELECT = `
   SELECT o.*, t.name AS table_name, a.name AS area_name, a.id AS area_id
@@ -25,6 +26,23 @@ function loadRawOrder(db, id) {
   const row = db.prepare(`${ORDER_SELECT} WHERE o.id = ?`).get(id);
   if (!row) throw notFound('No se encontró el pedido.');
   return row;
+}
+
+function newReceiptToken() {
+  return randomBytes(24).toString('base64url');
+}
+
+export function ensureReceiptToken(db, id, now = new Date().toISOString()) {
+  const row = loadRawOrder(db, id);
+  if (row.status !== 'pagada') {
+    throw conflict('Solo puedes compartir la factura de un pedido pagado.');
+  }
+  if (!row.public_receipt_token) {
+    db.prepare('UPDATE orders SET public_receipt_token = ?, updated_at = ? WHERE id = ?')
+      .run(newReceiptToken(), now, id);
+    audit(db, null, 'order.receipt_token', 'order', Number(id), {});
+  }
+  return getOrder(db, id);
 }
 
 function attachModifiers(db, items) {
@@ -533,12 +551,14 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
           paid_at = ?,
           closed_by_staff_id = ?,
           shift_id = ?,
+          public_receipt_token = COALESCE(public_receipt_token, ?),
           updated_at = ?
         WHERE id = ?
-      `).run(timestamp, staffId, shift?.id ?? null, timestamp, id);
+      `).run(timestamp, staffId, shift?.id ?? null, newReceiptToken(), timestamp, id);
       if (raw.table_id !== null) {
         db.prepare("UPDATE restaurant_tables SET status = 'libre' WHERE id = ?").run(raw.table_id);
       }
+      consumeInventoryForOrder(db, id, staffId, timestamp);
     }
 
     audit(db, staffId, closesOrder ? 'order.pay' : 'order.partial_payment', 'order', id, {

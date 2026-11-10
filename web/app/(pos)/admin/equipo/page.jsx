@@ -17,7 +17,7 @@ export default function StaffPage() {
   const [error, setError] = useState('');
   const [modal, setModal] = useState({ open: false, person: null });
   const [toast, setToast] = useState(null);
-  const isAdmin = currentStaff?.role === 'admin';
+  const isAdmin = ['owner', 'admin'].includes(currentStaff?.role);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,7 +82,7 @@ export default function StaffPage() {
               <p>{person.active ? 'Acceso activo' : 'Acceso desactivado'}</p>
               <div className="staff-card-actions">
                 {isAdmin ? (
-                  <button type="button" className="btn btn-small btn-secondary" onClick={() => setModal({ open: true, person })} disabled={!person.active && person.id === currentStaff?.id}>
+                  <button type="button" className="btn btn-small btn-secondary" onClick={() => setModal({ open: true, person })} disabled={person.role === 'owner' && currentStaff?.role !== 'owner'}>
                     <Icon name="edit" size={16} /> Editar
                   </button>
                 ) : <span className="field-hint">Solo un administrador puede editar.</span>}
@@ -102,6 +102,7 @@ export default function StaffPage() {
         person={modal.person}
         onClose={() => setModal({ open: false, person: null })}
         onSubmit={savePerson}
+        allowOwner={currentStaff?.role === 'owner'}
       />
       {toast ? <div className={`toast toast-${toast.type}`}>{toast.message}</div> : null}
     </div>

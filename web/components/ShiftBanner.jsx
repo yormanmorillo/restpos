@@ -13,7 +13,7 @@ export default function ShiftBanner() {
   const [shift, setShift] = useState(undefined);
 
   const load = useCallback(async () => {
-    if (!staff || !['admin', 'manager', 'cashier'].includes(staff.role)) return;
+    if (!staff || !['owner', 'admin', 'manager', 'cashier'].includes(staff.role)) return;
     try {
       const response = await api.getCurrentShift();
       setShift(response.shift);
@@ -28,7 +28,7 @@ export default function ShiftBanner() {
     return () => window.removeEventListener('restpos:shift-changed', load);
   }, [load]);
 
-  if (!staff || !['admin', 'manager', 'cashier'].includes(staff.role)) return null;
+  if (!staff || !['owner', 'admin', 'manager', 'cashier'].includes(staff.role)) return null;
   if (pathname === '/caja' || pathname === '/') return null;
   if (shift === undefined || shift) return null;
 

@@ -5,11 +5,13 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
+import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import {
   formatBusinessDate,
   formatMoney,
   formatTime,
   paymentLabel,
+  serviceLabel,
 } from '@/lib/format';
 
 export default function ReceiptPage() {
@@ -19,6 +21,7 @@ export default function ReceiptPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [timeZone, setTimeZone] = useState(null);
+  const [printer, setPrinter] = useState({ enabled: false, connection: 'network' });
 
   useEffect(() => {
     if (!id) return undefined;
@@ -26,13 +29,18 @@ export default function ReceiptPage() {
     async function load() {
       setLoading(true);
       try {
-        const [response, health] = await Promise.all([
+        const [response, health, features] = await Promise.all([
           api.getOrder(id),
           api.getHealth().catch(() => null),
+          api.getFeatures().catch(() => null),
         ]);
         if (cancelled) return;
         setOrder(response.order);
         setTimeZone(health?.timezone ?? null);
+        setPrinter({
+          enabled: features?.features?.printer_enabled === 'true',
+          connection: features?.features?.printer_connection || 'network',
+        });
         document.title = `Ticket ${response.order.orderNumber} · Casa Roble`;
         setError('');
       } catch (loadError) {
@@ -89,12 +97,15 @@ export default function ReceiptPage() {
           <button type="button" className="btn btn-secondary" onClick={() => window.close()}>
             Cerrar
           </button>
-          <button type="button" className="btn btn-secondary" onClick={async () => {
-            try { await api.printOrder(order.id, 'receipt'); } catch (printError) { alert(printError.message); }
-          }}>
-            <Icon name="receipt" size={19} />
-            Térmica
-          </button>
+          {paid ? <ShareWhatsAppButton orderId={order.id} /> : null}
+          {printer.enabled && printer.connection === 'network' ? (
+            <button type="button" className="btn btn-secondary" onClick={async () => {
+              try { await api.printOrder(order.id, 'receipt'); } catch (printError) { alert(printError.message); }
+            }}>
+              <Icon name="receipt" size={19} />
+              Térmica
+            </button>
+          ) : null}
           <button type="button" className="btn btn-primary" onClick={() => window.print()}>
             <Icon name="printer" size={19} />
             Imprimir

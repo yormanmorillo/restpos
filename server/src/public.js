@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getCatalog } from './catalog.js';
-import { createOrder, updateOrderDraft, cancelOrder } from './orders.js';
+import { createOrder, updateOrderDraft, cancelOrder, getOrder } from './orders.js';
 import { getBooleanSetting, getSetting, publicFeatures } from './settings.js';
 import { parseOrThrow, publicOrderSchema } from './validation.js';
 import { AppError, conflict, notFound } from './errors.js';
@@ -31,6 +31,49 @@ export function registerPublicRoutes(router, db, config) {
     res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     return res.sendFile(file, (error) => {
       if (error && !res.headersSent) next(error);
+    });
+  });
+
+  router.get('/public/receipts/:token', (req, res, next) => {
+    const { token } = req.params;
+    if (!/^[A-Za-z0-9_-]{20,80}$/.test(token)) return next(notFound('No se encontró la factura.'));
+    const row = db
+      .prepare("SELECT id FROM orders WHERE public_receipt_token = ? AND status = 'pagada'")
+      .get(token);
+    if (!row) return next(notFound('No se encontró la factura.'));
+    const order = getOrder(db, Number(row.id));
+    return res.json({
+      receipt: {
+        restaurantName: getSetting(db, 'restaurant_name', 'Casa Roble'),
+        orderNumber: order.orderNumber,
+        businessDate: order.businessDate,
+        paidAt: order.paidAt,
+        serviceType: order.serviceType,
+        tableName: order.tableName,
+        customerName: order.customerName || '',
+        items: order.items.map((item) => ({
+          id: item.id,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          lineTotalCents: item.lineTotalCents,
+          notes: item.notes,
+          modifiers: (item.modifiers ?? []).map((modifier) => modifier.modifierName),
+        })),
+        subtotalCents: order.subtotalCents,
+        discountCents: order.discountCents,
+        taxRateBps: order.taxRateBps,
+        taxCents: order.taxCents,
+        tipCents: order.tipCents,
+        deliveryFeeCents: order.deliveryFeeCents,
+        totalCents: order.totalCents,
+        payments: order.payments.map((payment) => ({
+          methodName: payment.paymentMethodName,
+          amountCents: payment.amountCents,
+        })),
+        currency: config.currency,
+        timezone: config.timezone,
+      },
     });
   });
 

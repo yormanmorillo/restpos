@@ -86,6 +86,7 @@ export const api = {
   getAreas: () => request('/areas'),
   getOrders: (params) => request(`/orders${queryString(params)}`),
   getOrder: (id) => request(`/orders/${id}`),
+  getOrderShare: (id) => request(`/orders/${id}/share`),
   createOrder: (body) => request('/orders', { method: 'POST', body }),
   updateDraft: (id, body) => request(`/orders/${id}/draft`, { method: 'PATCH', body }),
   sendToKitchen: (id) => request(`/orders/${id}/send-kitchen`, { method: 'POST', body: {} }),
@@ -111,6 +112,11 @@ export const api = {
   getAdminProducts: () => request('/admin/products'),
   createProduct: (body) => request('/admin/products', { method: 'POST', body }),
   updateProduct: (id, body) => request(`/admin/products/${id}`, { method: 'PATCH', body }),
+  importProducts: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request('/admin/products/import', { method: 'POST', body: form });
+  },
   setProductModifierGroups: (id, groupIds) => request(`/admin/products/${id}/modifier-groups`, { method: 'PUT', body: { groupIds } }),
   uploadProductImage: (id, file) => {
     const form = new FormData();
@@ -122,6 +128,18 @@ export const api = {
   getPaymentMethods: () => request('/payment-methods'),
   createPaymentMethod: (body) => request('/payment-methods', { method: 'POST', body }),
   updatePaymentMethod: (id, body) => request(`/payment-methods/${id}`, { method: 'PATCH', body }),
+  getInventoryItems: () => request('/inventory/items'),
+  createInventoryItem: (body) => request('/inventory/items', { method: 'POST', body }),
+  updateInventoryItem: (id, body) => request(`/inventory/items/${id}`, { method: 'PATCH', body }),
+  receiveInventory: (id, body) => request(`/inventory/items/${id}/receipts`, { method: 'POST', body }),
+  adjustInventory: (id, body) => request(`/inventory/items/${id}/adjustments`, { method: 'POST', body }),
+  getInventoryMovements: (params) => request(`/inventory/movements${queryString(params)}`),
+  getRecipes: () => request('/inventory/recipes'),
+  saveRecipe: (productId, ingredients) => request(`/inventory/recipes/${productId}`, { method: 'PUT', body: { ingredients } }),
+
+  getIntegrations: () => request('/integrations'),
+  createIntegration: (body) => request('/integrations', { method: 'POST', body }),
+  updateIntegration: (id, body) => request(`/integrations/${id}`, { method: 'PATCH', body }),
   uploadPaymentPhotos: (orderId, paymentId, files) => {
     const form = new FormData();
     for (const file of files) form.append('photos', file);
@@ -147,5 +165,6 @@ export const api = {
   updateTable: (id, body) => request(`/admin/tables/${id}`, { method: 'PATCH', body }),
 
   getPublicRestaurant: () => request('/public/restaurant', { skipUnauthorizedEvent: true }),
+  getPublicReceipt: (token) => request(`/public/receipts/${token}`, { skipUnauthorizedEvent: true }),
   createPublicOrder: (body) => request('/public/orders', { method: 'POST', body, skipUnauthorizedEvent: true }),
 };

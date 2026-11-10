@@ -269,7 +269,10 @@ function validationPin(value) {
   return value;
 }
 
-export function createStaff(db, input, staffId, now = new Date().toISOString()) {
+export function createStaff(db, input, staffId, actorRole = null, now = new Date().toISOString()) {
+  if (input.role === 'owner' && actorRole !== 'owner') {
+    throw new AppError(403, 'FORBIDDEN', 'Solo el propietario puede crear otro propietario.');
+  }
   const pin = validationPin(input.pin);
   const role = input.role;
   const result = db
@@ -286,9 +289,24 @@ export function createStaff(db, input, staffId, now = new Date().toISOString()) 
   return serializeStaff(db.prepare('SELECT * FROM staff WHERE id = ?').get(id));
 }
 
-export function updateStaff(db, id, input, actorId, now = new Date().toISOString()) {
+export function updateStaff(db, id, input, actorId, actorRole = null, now = new Date().toISOString()) {
   const existing = db.prepare('SELECT * FROM staff WHERE id = ?').get(id);
   if (!existing) throw new AppError(404, 'NOT_FOUND', 'No se encontró el empleado.');
+  if (existing.role === 'owner' && actorRole !== 'owner') {
+    throw new AppError(403, 'FORBIDDEN', 'Solo el propietario puede modificar al propietario.');
+  }
+  if (input.role === 'owner' && actorRole !== 'owner') {
+    throw new AppError(403, 'FORBIDDEN', 'Solo el propietario puede asignar el rol de propietario.');
+  }
+  if (existing.role === 'owner' && existing.active) {
+    const activeOwners = Number(
+      db.prepare("SELECT COUNT(*) AS count FROM staff WHERE role = 'owner' AND active = 1").get().count,
+    );
+    const staysOwner = (input.role ?? existing.role) === 'owner' && (input.active ?? true);
+    if (!staysOwner && activeOwners <= 1) {
+      throw new AppError(403, 'FORBIDDEN', 'Debe existir al menos un propietario activo.');
+    }
+  }
   const activeAdmins = Number(
     db.prepare("SELECT COUNT(*) AS count FROM staff WHERE role = 'admin' AND active = 1").get().count,
   );

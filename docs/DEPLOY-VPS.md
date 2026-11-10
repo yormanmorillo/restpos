@@ -52,6 +52,7 @@ Traefik gestiona y renueva los certificados de Let's Encrypt.
 
 - **La autenticación del POS es propia de la aplicación:** cada empleado entra con su nombre y PIN; hay roles y sesiones.
 - **Comprobantes y fotos:** los archivos se guardan fuera de la base, en `/data/uploads`, y sobreviven a los reinicios junto con el volumen.
+- **Propietario del software:** el rol `owner` es distinto del gerente de tienda (`admin`). Solo el propietario puede administrar integraciones y crear otros propietarios.
 - La cookie `restpos_session` es `HttpOnly`, `SameSite=Lax` y `Secure` en producción (`COOKIE_SECURE=true`).
 - La página pública `/pedir` y los endpoints `/api/public/*` están abiertos sin sesión por diseño. Todo lo demás exige una sesión válida.
 - Los PIN se guardan con `scrypt`; los tokens de sesión se guardan como hash SHA-256.
@@ -86,7 +87,21 @@ La base incluye menú, áreas, mesas y modificadores, pero **no incluye empleado
 
 No compartas la base sin antes revisar los empleados y PINs. Si se pierde el acceso, usa el procedimiento de recuperación.
 
+### Crear la cuenta del propietario del software
+
+El propietario (`owner`) tiene un panel propio en `/owner` para nombre del restaurante, métodos de pago, integraciones y accesos. Créalo desde consola:
+
+```bash
+cd /home/ubuntu/restpos-build
+sudo docker compose -p restpos-h7kjj3 exec api \
+  node server/scripts/create-owner.js "MATMAX Admin" 123456
+```
+
+El propietario aparece en el login como un empleado más. El gerente de tienda conserva el rol `admin`.
+
 ### Recuperar el PIN de un administrador
+
+Para un propietario, usa el mismo comando `create-owner` con su nombre y un PIN nuevo.
 
 Con la app detenida o desde el contenedor del API:
 
@@ -248,9 +263,14 @@ curl -I https://totem.lapizzeria.food/pedir
 
 ## Impresión térmica
 
-La impresora debe ser ESC/POS y aceptar conexiones TCP en el puerto 9100 (o el configurado), accesible desde el contenedor del API.
+Se admiten dos modos en **Administración → Ajustes**:
 
-- Configura **cocina** y **tickets** por separado en **Administración → Ajustes**.
+1. **Red TCP / ESC-POS:** impresora conectada por Ethernet/WiFi, puerto 9100. Compatible con papel de **58 mm** o **80 mm**.
+2. **Navegador / impresora instalada:** usa el diálogo del dispositivo. Funciona con cualquier impresora térmica instalada por USB, Bluetooth o red mediante su controlador.
+
+En modo red:
+
+- Configura **cocina** y **tickets** por separado.
 - La comanda se envía al pulsar **Enviar a cocina** si `auto_print_kitchen` está activo.
 - El ticket del cliente se imprime desde el POS o desde `/recibo/:id`.
 - Prueba desde la red del servidor:
@@ -258,6 +278,24 @@ La impresora debe ser ESC/POS y aceptar conexiones TCP en el puerto 9100 (o el c
 ```bash
 nc -vz 192.168.1.50 9100
 ```
+
+En modo navegador, usa **Imprimir ticket** o **Imprimir** en la vista de la factura; el sistema abre el diálogo del sistema operativo.
+
+## Inventario y recetas
+
+- **Inventario → Stock**: crea insumos (g, ml, pz), registra entradas de mercancía y ajustes de conteo.
+- **Inventario → Recetas**: asigna a cada producto los insumos y cantidades que consume una unidad vendida.
+- Al cobrar un pedido, los ingredientes se descuentan automáticamente en la misma transacción del pago.
+- Los insumos bajo mínimo se marcan en rojo. Se permite stock negativo para no bloquear la venta; revisa los movimientos y ajusta.
+- La importación masiva de productos CSV está en **Administración → Menú → Carga masiva**.
+
+## Integraciones externas
+
+El propietario puede guardar URL base, tipo de autenticación y token de futuros proveedores en **Propietario → Integraciones**. Esta versión **no envía datos todavía**; el conector debe implementarse antes de activar la integración. Los tokens se guardan en la base de datos: protege el acceso al panel y los respaldos.
+
+## Factura por WhatsApp
+
+Desde el cobro, el ticket o el historial se genera un enlace público `/r/<token>` con la factura. El botón **WhatsApp** abre WhatsApp con el resumen y el enlace. El enlace no expone teléfono, dirección ni datos internos del cliente.
 
 ## Limitaciones actuales
 

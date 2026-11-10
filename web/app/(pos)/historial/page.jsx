@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
+import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { api } from '@/lib/api';
 import {
   formatBusinessDate,
@@ -394,6 +395,7 @@ export default function HistoryPage() {
                         </td>
                         <td className="align-right amount-cell">{formatMoney(order.totalCents)}</td>
                         <td className="align-right">
+                          {order.status === 'pagada' ? <ShareWhatsAppButton orderId={order.id} compact className="icon-button table-link" /> : null}
                           <a
                             className="icon-button table-link"
                             href={`/recibo/${order.id}`}

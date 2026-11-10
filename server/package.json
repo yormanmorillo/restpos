@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:reset": "node scripts/reset-db.js",
-    "admin:reset-pin": "node scripts/reset-admin-pin.js"
+    "admin:reset-pin": "node scripts/reset-admin-pin.js",
+    "owner:create": "node scripts/create-owner.js"
   },
   "dependencies": {
     "@restpos/shared": "*",

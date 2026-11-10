@@ -13,9 +13,9 @@ import {
 import { getSettings, updateSettings } from './settings.js';
 import { registerPublicRoutes } from './public.js';
 import { getCatalog } from './catalog.js';
-import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, listOrders, sendOrderToKitchen } from './orders.js';
+import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
 import { getDailyReport, dailyReportCsv } from './reports.js';
-import { getBooleanSetting } from './settings.js';
+import { getBooleanSetting, getSetting } from './settings.js';
 import { printOrder } from './printer.js';
 import { getKitchenTickets, updateKitchenItem, updateKitchenTicket } from './kitchen.js';
 import { getShiftSummary, getOpenShift, openShift, closeShift } from './shifts.js';
@@ -59,11 +59,33 @@ import {
   productModifierGroupsSchema,
   paymentMethodCreateSchema,
   paymentMethodUpdateSchema,
+  integrationCreateSchema,
+  integrationUpdateSchema,
+  inventoryItemCreateSchema,
+  inventoryItemUpdateSchema,
+  inventoryReceiptSchema,
+  inventoryAdjustmentSchema,
+  recipeSchema,
 } from './validation.js';
 import { listAreas, createArea, updateArea, listAdminTables, createTable, updateTable } from './areas.js';
 import { listPaymentMethods, createPaymentMethod, updatePaymentMethod, findPaymentMethod } from './payment-methods.js';
+import { listIntegrations, createIntegration, updateIntegration } from './integrations.js';
+import { listInventoryItems, createInventoryItem, updateInventoryItem, receiveInventory, adjustInventory, listInventoryMovements, listRecipes, saveRecipe } from './inventory.js';
+import { importProducts } from './product-import.js';
 import { serializeProduct } from './serializers.js';
 import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
+
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, callback) => {
+    if (!/\.csv$/i.test(file.originalname) && !['text/csv', 'text/plain', 'application/vnd.ms-excel'].includes(file.mimetype)) {
+      callback(new AppError(422, 'INVALID_FILE', 'Sube un archivo CSV.'));
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -135,41 +157,41 @@ export function createApp({ db, config }) {
     res.json({ tables: listTables(db) });
   });
 
-  api.get('/admin/tables', requireRoles('admin', 'manager'), (req, res) => {
+  api.get('/admin/tables', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ tables: listAdminTables(db) });
   });
 
-  api.post('/admin/tables', requireRoles('admin', 'manager'), (req, res) => {
+  api.post('/admin/tables', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(tableCreateSchema, req.body);
     res.status(201).json({ table: createTable(db, input) });
   });
 
-  api.patch('/admin/tables/:id', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/admin/tables/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(tableUpdateSchema, req.body);
     res.json({ table: updateTable(db, id, input) });
   });
 
-  api.get('/staff', requireRoles('admin', 'manager'), (req, res) => {
+  api.get('/staff', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ staff: listStaff(db) });
   });
 
-  api.post('/staff', requireRoles('admin'), (req, res) => {
+  api.post('/staff', requireRoles('owner', 'admin'), (req, res) => {
     const input = parseOrThrow(staffCreateSchema, req.body);
-    res.status(201).json({ staff: createStaff(db, input, req.staff.id) });
+    res.status(201).json({ staff: createStaff(db, input, req.staff.id, req.staff.role) });
   });
 
-  api.patch('/staff/:id', requireRoles('admin'), (req, res) => {
+  api.patch('/staff/:id', requireRoles('owner', 'admin'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(staffUpdateSchema, req.body);
-    res.json({ staff: updateStaff(db, id, input, req.staff.id) });
+    res.json({ staff: updateStaff(db, id, input, req.staff.id, req.staff.role) });
   });
 
-  api.get('/settings', requireRoles('admin', 'manager'), (req, res) => {
+  api.get('/settings', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ settings: getSettings(db) });
   });
 
-  api.patch('/settings', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/settings', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(settingsUpdateSchema, req.body);
     res.json({ settings: updateSettings(db, input.settings) });
   });
@@ -178,18 +200,18 @@ export function createApp({ db, config }) {
     res.json({ methods: listPaymentMethods(db) });
   });
 
-  api.post('/payment-methods', requireRoles('admin', 'manager'), (req, res) => {
+  api.post('/payment-methods', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(paymentMethodCreateSchema, req.body);
     res.status(201).json({ method: createPaymentMethod(db, input, req.staff.id) });
   });
 
-  api.patch('/payment-methods/:id', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/payment-methods/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(paymentMethodUpdateSchema, req.body);
     res.json({ method: updatePaymentMethod(db, id, input, req.staff.id) });
   });
 
-  api.get('/payment-photos/:photoId', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res, next) => {
+  api.get('/payment-photos/:photoId', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res, next) => {
     const { photoId } = parseOrThrow(photoIdParamsSchema, req.params);
     const photo = db.prepare('SELECT * FROM payment_photos WHERE id = ?').get(photoId);
     if (!photo) return next(notFound('No se encontró el comprobante.'));
@@ -202,7 +224,7 @@ export function createApp({ db, config }) {
     });
   });
 
-  api.post('/orders/:id/payments/:paymentId/photos', requireRoles('admin', 'manager', 'cashier', 'server'), upload.array('photos', 4), (req, res) => {
+  api.post('/orders/:id/payments/:paymentId/photos', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), upload.array('photos', 4), (req, res) => {
     const { id, paymentId } = parseOrThrow(orderPaymentParamsSchema, req.params);
     const payment = db.prepare('SELECT * FROM payments WHERE id = ? AND order_id = ?').get(paymentId, id);
     if (!payment) throw notFound('No se encontró el pago.');
@@ -242,7 +264,7 @@ export function createApp({ db, config }) {
     res.status(201).json({ photos: inserted });
   });
 
-  api.delete('/payment-photos/:photoId', requireRoles('admin', 'manager'), (req, res) => {
+  api.delete('/payment-photos/:photoId', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { photoId } = parseOrThrow(photoIdParamsSchema, req.params);
     const photo = db.prepare('SELECT * FROM payment_photos WHERE id = ?').get(photoId);
     if (!photo) throw notFound('No se encontró el comprobante.');
@@ -252,60 +274,118 @@ export function createApp({ db, config }) {
     res.json({ success: true });
   });
 
+  api.get('/inventory/items', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    res.json({ items: listInventoryItems(db) });
+  });
+
+  api.post('/inventory/items', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const input = parseOrThrow(inventoryItemCreateSchema, req.body);
+    res.status(201).json({ item: createInventoryItem(db, input, req.staff.id) });
+  });
+
+  api.patch('/inventory/items/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(inventoryItemUpdateSchema, req.body);
+    res.json({ item: updateInventoryItem(db, id, input, req.staff.id) });
+  });
+
+  api.post('/inventory/items/:id/receipts', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(inventoryReceiptSchema, req.body);
+    res.status(201).json(receiveInventory(db, id, input, req.staff.id));
+  });
+
+  api.post('/inventory/items/:id/adjustments', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(inventoryAdjustmentSchema, req.body);
+    res.json({ item: adjustInventory(db, id, input, req.staff.id) });
+  });
+
+  api.get('/inventory/movements', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const itemId = req.query.itemId ? Number(req.query.itemId) : null;
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    res.json({ movements: listInventoryMovements(db, { itemId: Number.isInteger(itemId) && itemId > 0 ? itemId : null, limit }) });
+  });
+
+  api.get('/inventory/recipes', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    res.json({ recipes: listRecipes(db) });
+  });
+
+  api.put('/inventory/recipes/:productId', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id: productId } = parseOrThrow(idParamsSchema, { id: req.params.productId });
+    const input = parseOrThrow(recipeSchema, req.body);
+    res.json({ recipe: saveRecipe(db, productId, input.ingredients, req.staff.id) });
+  });
+
+  api.get('/integrations', requireRoles('owner'), (req, res) => {
+    res.json({ integrations: listIntegrations(db) });
+  });
+
+  api.post('/integrations', requireRoles('owner'), (req, res) => {
+    const input = parseOrThrow(integrationCreateSchema, req.body);
+    res.status(201).json({ integration: createIntegration(db, input, req.staff.id) });
+  });
+
+  api.patch('/integrations/:id', requireRoles('owner'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(integrationUpdateSchema, req.body);
+    res.json({ integration: updateIntegration(db, id, input, req.staff.id) });
+  });
+
   api.get('/areas', (req, res) => {
     res.json({ areas: listAreas(db) });
   });
 
-  api.post('/areas', requireRoles('admin', 'manager'), (req, res) => {
+  api.post('/areas', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(areaCreateSchema, req.body);
     res.status(201).json({ area: createArea(db, input) });
   });
 
-  api.patch('/areas/:id', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/areas/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(areaUpdateSchema, req.body);
     res.json({ area: updateArea(db, id, input) });
   });
 
-  api.get('/orders', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.get('/orders', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const query = parseOrThrow(orderListQuerySchema, req.query);
     assertValidDate(query.date);
     res.json(listOrders(db, query));
   });
 
-  api.get('/orders/:id', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.get('/orders/:id', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     res.json({ order: getOrder(db, id) });
   });
 
-  api.post('/orders', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.post('/orders', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const input = parseOrThrow(createOrderSchema, req.body);
     const order = createOrder(db, config, input, { staffId: req.staff.id });
     res.status(201).json({ order });
   });
 
-  api.patch('/orders/:id/draft', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.patch('/orders/:id/draft', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(draftSchema, req.body);
     res.json({ order: updateOrderDraft(db, config, id, input, { staffId: req.staff.id }) });
   });
 
-  api.post('/orders/:id/pay', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.post('/orders/:id/pay', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(payOrderSchema, req.body);
     res.json({ order: payOrder(db, config, id, input, { staffId: req.staff.id }) });
   });
 
-  api.post('/orders/:id/cancel', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.post('/orders/:id/cancel', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     res.json({ order: cancelOrder(db, id, { staffId: req.staff.id }) });
   });
 
-  api.post('/orders/:id/send-kitchen', requireRoles('admin', 'manager', 'cashier', 'server'), async (req, res) => {
+  api.post('/orders/:id/send-kitchen', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), async (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const order = sendOrderToKitchen(db, id, { staffId: req.staff.id });
     let printWarning = null;
-    if (getBooleanSetting(db, 'auto_print_kitchen', false) && getBooleanSetting(db, 'printer_enabled', false)) {
+    if (getBooleanSetting(db, 'auto_print_kitchen', false) && getBooleanSetting(db, 'printer_enabled', false) && getSetting(db, 'printer_connection', 'network') === 'network') {
       try {
         await printOrder(db, order, 'kitchen', { timeZone: config.timezone });
       } catch (error) {
@@ -315,40 +395,48 @@ export function createApp({ db, config }) {
     res.json({ order, ...(printWarning ? { printWarning } : {}) });
   });
 
-  api.post('/orders/:id/print/kitchen', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), async (req, res) => {
+  api.get('/orders/:id/share', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const order = ensureReceiptToken(db, id);
+    const restaurantName = getSetting(db, 'restaurant_name', 'Casa Roble');
+    const message = `${restaurantName} · Pedido ${order.orderNumber}\nTotal: $${(order.totalCents / 100).toFixed(2)}\nGracias por su visita.`;
+    res.json({ url: order.publicReceiptUrl, message, orderNumber: order.orderNumber });
+  });
+
+  api.post('/orders/:id/print/kitchen', requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), async (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     await printOrder(db, getOrder(db, id), 'kitchen', { timeZone: config.timezone });
     res.json({ success: true });
   });
 
-  api.post('/orders/:id/print/receipt', requireRoles('admin', 'manager', 'cashier', 'server'), async (req, res) => {
+  api.post('/orders/:id/print/receipt', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), async (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     await printOrder(db, getOrder(db, id), 'receipt', { timeZone: config.timezone });
     res.json({ success: true });
   });
 
-  api.get('/kitchen/orders', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
+  api.get('/kitchen/orders', requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
     res.json({ tickets: getKitchenTickets(db) });
   });
 
-  api.patch('/kitchen/items/:id', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
+  api.patch('/kitchen/items/:id', requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(kitchenItemUpdateSchema, req.body);
     res.json({ result: updateKitchenItem(db, id, input.status, req.staff.id) });
   });
 
-  api.patch('/kitchen/orders/:id', requireRoles('admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
+  api.patch('/kitchen/orders/:id', requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(kitchenTicketUpdateSchema, req.body);
     res.json({ order: updateKitchenTicket(db, id, input.status, req.staff.id) });
   });
 
-  api.get('/shifts/current', requireRoles('admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.get('/shifts/current', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const shift = getOpenShift(db);
     res.json(shift ? getShiftSummary(db, shift.id) : { shift: null, totals: null });
   });
 
-  api.get('/shifts', requireRoles('admin', 'manager', 'cashier'), (req, res) => {
+  api.get('/shifts', requireRoles('owner', 'admin', 'manager', 'cashier'), (req, res) => {
     const rows = db
       .prepare(`
         SELECT s.id FROM shifts s
@@ -360,50 +448,50 @@ export function createApp({ db, config }) {
     res.json({ shifts: rows });
   });
 
-  api.get('/shifts/:id', requireRoles('admin', 'manager', 'cashier'), (req, res) => {
+  api.get('/shifts/:id', requireRoles('owner', 'admin', 'manager', 'cashier'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     res.json(getShiftSummary(db, id));
   });
 
-  api.post('/shifts/open', requireRoles('admin', 'manager', 'cashier'), (req, res) => {
+  api.post('/shifts/open', requireRoles('owner', 'admin', 'manager', 'cashier'), (req, res) => {
     const input = parseOrThrow(shiftOpenSchema, req.body);
     res.status(201).json(openShift(db, req.staff.id, input.openingCents, input.notes));
   });
 
-  api.post('/shifts/:id/close', requireRoles('admin', 'manager', 'cashier'), (req, res) => {
+  api.post('/shifts/:id/close', requireRoles('owner', 'admin', 'manager', 'cashier'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(shiftCloseSchema, req.body);
     res.json(closeShift(db, id, req.staff.id, input.countedCents, input.notes));
   });
 
-  api.get('/modifier-groups', requireRoles('admin', 'manager'), (req, res) => {
+  api.get('/modifier-groups', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ groups: listModifierGroups(db, { includeInactive: true }) });
   });
 
-  api.post('/modifier-groups', requireRoles('admin', 'manager'), (req, res) => {
+  api.post('/modifier-groups', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(modifierGroupCreateSchema, req.body);
     res.status(201).json({ group: createModifierGroup(db, input) });
   });
 
-  api.patch('/modifier-groups/:id', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/modifier-groups/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(modifierGroupUpdateSchema, req.body);
     res.json({ group: updateModifierGroup(db, id, input) });
   });
 
-  api.put('/admin/products/:id/modifier-groups', requireRoles('admin', 'manager'), (req, res) => {
+  api.put('/admin/products/:id/modifier-groups', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(productModifierGroupsSchema, req.body);
     res.json({ groups: setProductModifierGroups(db, id, input.groupIds) });
   });
 
-  api.get('/reports/daily', requireRoles('admin', 'manager', 'cashier'), (req, res) => {
+  api.get('/reports/daily', requireRoles('owner', 'admin', 'manager', 'cashier'), (req, res) => {
     const { date } = parseOrThrow(dateQuerySchema, req.query);
     assertValidDate(date);
     res.json(getDailyReport(db, config, date));
   });
 
-  api.get('/reports/daily.csv', requireRoles('admin', 'manager', 'cashier'), (req, res) => {
+  api.get('/reports/daily.csv', requireRoles('owner', 'admin', 'manager', 'cashier'), (req, res) => {
     const { date } = parseOrThrow(dateQuerySchema, req.query);
     assertValidDate(date);
     const report = getDailyReport(db, config, date);
@@ -412,37 +500,43 @@ export function createApp({ db, config }) {
     res.send(dailyReportCsv(report));
   });
 
-  api.get('/admin/categories', requireRoles('admin', 'manager'), (req, res) => {
+  api.get('/admin/categories', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ categories: listAdminCategories(db) });
   });
 
-  api.post('/admin/categories', requireRoles('admin', 'manager'), (req, res) => {
+  api.post('/admin/categories', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(categoryCreateSchema, req.body);
     res.status(201).json({ category: createCategory(db, input) });
   });
 
-  api.patch('/admin/categories/:id', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/admin/categories/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(categoryUpdateSchema, req.body);
     res.json({ category: updateCategory(db, id, input) });
   });
 
-  api.get('/admin/products', requireRoles('admin', 'manager'), (req, res) => {
+  api.get('/admin/products', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ products: listAdminProducts(db) });
   });
 
-  api.post('/admin/products', requireRoles('admin', 'manager'), (req, res) => {
+  api.post('/admin/products', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(productCreateSchema, req.body);
     res.status(201).json({ product: createProduct(db, input) });
   });
 
-  api.patch('/admin/products/:id', requireRoles('admin', 'manager'), (req, res) => {
+  api.patch('/admin/products/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(productUpdateSchema, req.body);
     res.json({ product: updateProduct(db, id, input) });
   });
 
-  api.post('/admin/products/:id/image', requireRoles('admin', 'manager'), upload.single('image'), (req, res) => {
+  api.post('/admin/products/import', requireRoles('owner', 'admin', 'manager'), csvUpload.single('file'), (req, res) => {
+    if (!req.file) throw validationError('Selecciona un archivo CSV.');
+    const text = req.file.buffer.toString('utf8');
+    res.json({ result: importProducts(db, text, req.staff.id) });
+  });
+
+  api.post('/admin/products/:id/image', requireRoles('owner', 'admin', 'manager'), upload.single('image'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const existing = db
       .prepare(`
@@ -468,7 +562,7 @@ export function createApp({ db, config }) {
     res.json({ product: serializeProduct(updated) });
   });
 
-  api.delete('/admin/products/:id/image', requireRoles('admin', 'manager'), (req, res) => {
+  api.delete('/admin/products/:id/image', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
     if (!existing) throw notFound('No se encontró el producto.');

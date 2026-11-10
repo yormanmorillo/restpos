@@ -42,6 +42,10 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
   const [photoFiles, setPhotoFiles] = useState([]);
   const [photoError, setPhotoError] = useState('');
   const [uploadingPayment, setUploadingPayment] = useState(null);
+  const [shiftOpen, setShiftOpen] = useState(null);
+  const [requireShift, setRequireShift] = useState(true);
+  const [shiftLoading, setShiftLoading] = useState(false);
+  const [shiftError, setShiftError] = useState('');
 
   const paidCents = Number(order.amountPaidCents ?? 0);
   const balanceCents = Math.max(0, Number(order.totalCents) - paidCents);
@@ -63,14 +67,21 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     setPhotoError('');
     setMethodsLoading(true);
     setMethodsError('');
-    api.getPaymentMethods()
-      .then((response) => {
-        const active = (response.methods ?? []).filter((method) => method.active);
+    setShiftLoading(true);
+    setShiftError('');
+    Promise.all([api.getPaymentMethods(), api.getCurrentShift(), api.getFeatures()])
+      .then(([methodsResponse, shiftResponse, featuresResponse]) => {
+        const active = (methodsResponse.methods ?? []).filter((method) => method.active);
         setMethods(active);
         setMethodCode(active.find((method) => method.code === 'efectivo')?.code ?? active[0]?.code ?? '');
+        setShiftOpen(Boolean(shiftResponse.shift));
+        setRequireShift(featuresResponse.features?.require_shift !== 'false');
       })
       .catch((loadError) => setMethodsError(loadError.message || 'No se pudieron cargar los métodos de pago.'))
-      .finally(() => setMethodsLoading(false));
+      .finally(() => {
+        setMethodsLoading(false);
+        setShiftLoading(false);
+      });
   }, [open]); // Solo al abrir.
 
   useEffect(() => {
@@ -178,7 +189,8 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     }
   }
 
-  const canConfirm = !paying && !methodsLoading && Boolean(selectedMethod) && !amountError && !cashError && amountCents !== null;
+  const shiftBlocked = shiftLoading || (requireShift && shiftOpen === false);
+  const canConfirm = !paying && !shiftBlocked && !methodsLoading && Boolean(selectedMethod) && !amountError && !cashError && amountCents !== null;
 
   return (
     <Modal
@@ -206,6 +218,20 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     >
       <div className="payment-layout">
         <div className="payment-main">
+          {shiftLoading ? (
+            <div className="payment-shift-note"><span className="spinner spinner-small" /> Verificando turno de caja…</div>
+          ) : requireShift && shiftOpen === false ? (
+            <div className="payment-shift-block" role="alert">
+              <span className="payment-shift-icon"><Icon name="cash" size={20} /></span>
+              <div>
+                <strong>Abre un turno de caja para cobrar</strong>
+                <span>La caja está cerrada. Debes abrirla antes de cobrar con <b>cualquier método de pago</b>.</span>
+              </div>
+              <a href="/caja" target="_blank" rel="noreferrer" className="btn btn-small btn-dark">Abrir caja</a>
+            </div>
+          ) : shiftError ? (
+            <div className="inline-error"><Icon name="alert" size={16} /> {shiftError}</div>
+          ) : null}
           {partialNotice ? (
             <div className="alert alert-success"><Icon name="check" size={18} /><p>{partialNotice}</p></div>
           ) : null}
@@ -230,7 +256,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
                     type="button"
                     className={`payment-method ${methodCode === item.code ? 'is-selected' : ''}`}
                     onClick={() => { setMethodCode(item.code); setError(''); }}
-                    disabled={paying}
+                    disabled={paying || shiftBlocked}
                   >
                     <Icon name={methodIcon(item)} size={24} />
                     <strong>{item.name}</strong>

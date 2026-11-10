@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import ProductModal from '@/components/admin/ProductModal';
 import CategoryModal from '@/components/admin/CategoryModal';
+import BulkImportModal from '@/components/admin/BulkImportModal';
 
 function StatusBadge({ active }) {
   return (
@@ -42,6 +43,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState('');
   const [productModal, setProductModal] = useState({ open: false, product: null });
   const [categoryModal, setCategoryModal] = useState({ open: false, category: null });
+  const [importOpen, setImportOpen] = useState(false);
   const [busyId, setBusyId] = useState('');
   const [toast, setToast] = useState(null);
 
@@ -85,6 +87,20 @@ export default function AdminPage() {
 
   const activeProducts = products.filter((product) => product.active).length;
   const activeCategories = categories.filter((category) => category.active).length;
+  const productGroups = useMemo(() => {
+    const known = new Set(categories.map((category) => category.id));
+    const groups = categories
+      .map((category) => ({
+        category,
+        products: filteredProducts.filter((product) => product.categoryId === category.id),
+      }))
+      .filter((group) => group.products.length > 0);
+    const orphans = filteredProducts.filter((product) => !known.has(product.categoryId));
+    if (orphans.length > 0) {
+      groups.push({ category: { id: 'orphans', name: 'Sin categoría', active: false }, products: orphans });
+    }
+    return groups;
+  }, [categories, filteredProducts]);
 
   async function saveProduct(payload, imageAction = {}) {
     let saved;
@@ -189,6 +205,10 @@ export default function AdminPage() {
           <p>Crea, edita y desactiva productos y categorías. Los cambios se reflejan en el punto de venta.</p>
         </div>
         <div className="heading-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => setImportOpen(true)}>
+            <Icon name="upload" size={19} />
+            Carga masiva
+          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -282,46 +302,58 @@ export default function AdminPage() {
               <p>Cambia la búsqueda o crea un producto nuevo.</p>
             </div>
           ) : (
-            <div className="admin-product-list">
-              {filteredProducts.map((product) => (
-                <article key={product.id} className={`admin-row admin-product-row ${product.active ? '' : 'is-inactive'}`}>
-                  <div className="admin-product-main">
-                    {product.imageUrl ? <img className="admin-product-thumb" src={product.imageUrl} alt="" /> : null}
-                    <div className="admin-product-copy">
-                    <div className="admin-product-tags">
-                      <span className="category-tag">{product.categoryName}</span>
-                      <StatusBadge active={product.active} />
+            <div className="admin-product-groups">
+              {productGroups.map((group) => (
+                <section key={group.category.id} className="admin-category-group">
+                  <header className="admin-category-group-head">
+                    <div>
+                      <h3>{group.category.name}</h3>
+                      <span>{group.products.length} {group.products.length === 1 ? 'producto' : 'productos'}</span>
                     </div>
-                    <h3>{product.name}</h3>
-                    {product.description ? <p>{product.description}</p> : null}
-                    </div>
+                    {group.category.id !== 'orphans' && group.category.active === false ? <span className="status-badge is-inactive">Categoría inactiva</span> : null}
+                  </header>
+                  <div className="admin-product-list">
+                    {group.products.map((product) => (
+                      <article key={product.id} className={`admin-row admin-product-row ${product.active ? '' : 'is-inactive'}`}>
+                        <div className="admin-product-main">
+                          {product.imageUrl ? <img className="admin-product-thumb" src={product.imageUrl} alt="" /> : null}
+                          <div className="admin-product-copy">
+                            <div className="admin-product-tags">
+                              <StatusBadge active={product.active} />
+                            </div>
+                            <h3>{product.name}</h3>
+                            {product.description ? <p>{product.description}</p> : null}
+                          </div>
+                        </div>
+                        <div className="admin-product-price">
+                          <span>Precio</span>
+                          <strong>{formatMoney(product.priceCents)}</strong>
+                        </div>
+                        <div className="admin-row-actions">
+                          <button
+                            type="button"
+                            className="btn btn-small btn-secondary"
+                            onClick={() => setProductModal({ open: true, product })}
+                          >
+                            <Icon name="edit" size={16} />
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-small ${product.active ? 'btn-danger-quiet' : 'btn-success-quiet'}`}
+                            onClick={() => void toggleProduct(product)}
+                            disabled={busyId === `product-${product.id}`}
+                          >
+                            {busyId === `product-${product.id}` ? (
+                              <span className="spinner spinner-small" aria-hidden="true" />
+                            ) : null}
+                            {product.active ? 'Desactivar' : 'Activar'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
                   </div>
-                  <div className="admin-product-price">
-                    <span>Precio</span>
-                    <strong>{formatMoney(product.priceCents)}</strong>
-                  </div>
-                  <div className="admin-row-actions">
-                    <button
-                      type="button"
-                      className="btn btn-small btn-secondary"
-                      onClick={() => setProductModal({ open: true, product })}
-                    >
-                      <Icon name="edit" size={16} />
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-small ${product.active ? 'btn-danger-quiet' : 'btn-success-quiet'}`}
-                      onClick={() => void toggleProduct(product)}
-                      disabled={busyId === `product-${product.id}`}
-                    >
-                      {busyId === `product-${product.id}` ? (
-                        <span className="spinner spinner-small" aria-hidden="true" />
-                      ) : null}
-                      {product.active ? 'Desactivar' : 'Activar'}
-                    </button>
-                  </div>
-                </article>
+                </section>
               ))}
             </div>
           )}
@@ -406,6 +438,7 @@ export default function AdminPage() {
         </section>
       )}
 
+      <BulkImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={loadData} />
       <ProductModal
         open={productModal.open}
         product={productModal.product}

@@ -8,11 +8,12 @@ import { api } from '@/lib/api';
 import { ROLE_LABELS, useAuth } from './auth/AuthProvider';
 
 const NAV_ITEMS = [
-  { href: '/', label: 'Vender', icon: 'pos', roles: ['admin', 'manager', 'cashier', 'server'] },
-  { href: '/cocina', label: 'Cocina', icon: 'chef', roles: ['admin', 'manager', 'cashier', 'kitchen'] },
-  { href: '/caja', label: 'Caja', icon: 'cash', roles: ['admin', 'manager', 'cashier'] },
-  { href: '/historial', label: 'Historial', icon: 'history', roles: ['admin', 'manager', 'cashier'] },
-  { href: '/admin', label: 'Administración', icon: 'admin', roles: ['admin', 'manager'] },
+  { href: '/owner', label: 'Propietario', icon: 'admin', roles: ['owner'] },
+  { href: '/', label: 'Vender', icon: 'pos', roles: ['owner', 'admin', 'manager', 'cashier', 'server'] },
+  { href: '/cocina', label: 'Cocina', icon: 'chef', roles: ['owner', 'admin', 'manager', 'cashier', 'kitchen'] },
+  { href: '/caja', label: 'Caja', icon: 'cash', roles: ['owner', 'admin', 'manager', 'cashier'] },
+  { href: '/historial', label: 'Historial', icon: 'history', roles: ['owner', 'admin', 'manager', 'cashier'] },
+  { href: '/admin', label: 'Administración', icon: 'admin', roles: ['owner', 'admin', 'manager'] },
 ];
 
 function initials(name = '') {
@@ -34,7 +35,7 @@ export default function AppHeader() {
   }, []);
 
   const loadShift = useCallback(async () => {
-    if (!staff || !['admin', 'manager', 'cashier'].includes(staff.role)) return;
+    if (!staff || !['owner', 'admin', 'manager', 'cashier'].includes(staff.role)) return;
     try {
       const response = await api.getCurrentShift();
       setShift(response.shift);
@@ -67,7 +68,7 @@ export default function AppHeader() {
   return (
     <header className="app-header">
       <div className="app-header-inner">
-        <Link href={staff.role === 'kitchen' ? '/cocina' : '/'} className="brand" aria-label="Casa Roble">
+        <Link href={staff.role === 'kitchen' ? '/cocina' : staff.role === 'owner' ? '/owner' : '/'} className="brand" aria-label="Casa Roble">
           <span className="brand-mark">
             <Icon name="leaf" size={22} />
           </span>
@@ -95,7 +96,7 @@ export default function AppHeader() {
         </nav>
 
         <div className="header-tools">
-          {['admin', 'manager', 'cashier'].includes(staff.role) ? (
+          {['owner', 'admin', 'manager', 'cashier'].includes(staff.role) ? (
             <Link href="/caja" className={`shift-pill ${shift ? 'is-open' : 'is-closed'}`} title={shift ? 'Turno de caja abierto' : 'Abrir turno de caja'}>
               <span className="pulse-dot" aria-hidden="true" />
               <span>{shift ? 'Caja abierta' : 'Abrir caja'}</span>

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS orders (
   total_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
   payment_method TEXT,
   payment_method_name TEXT NOT NULL DEFAULT '',
+  public_receipt_token TEXT UNIQUE,
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
   business_date TEXT NOT NULL,
@@ -99,7 +100,7 @@ const OPERATIONS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS staff (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'cashier', 'server', 'kitchen')),
+  role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen')),
   pin_hash TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
   created_at TEXT NOT NULL,
@@ -233,6 +234,51 @@ CREATE TABLE IF NOT EXISTS order_item_modifiers (
 );
 CREATE INDEX IF NOT EXISTS order_item_modifiers_item_idx ON order_item_modifiers(order_item_id);
 
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  sku TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT 'g' CHECK (unit IN ('g', 'ml', 'pz')),
+  current_milli INTEGER NOT NULL DEFAULT 0,
+  min_milli INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS inventory_movements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('receipt', 'adjustment', 'consumption', 'waste')),
+  quantity_milli INTEGER NOT NULL,
+  cost_cents INTEGER NOT NULL DEFAULT 0,
+  reference TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS inventory_movements_item_idx ON inventory_movements(item_id, created_at);
+
+CREATE TABLE IF NOT EXISTS product_ingredients (
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  inventory_item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+  quantity_milli INTEGER NOT NULL CHECK (quantity_milli > 0),
+  PRIMARY KEY (product_id, inventory_item_id)
+);
+
+CREATE TABLE IF NOT EXISTS integrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'other',
+  base_url TEXT NOT NULL DEFAULT '',
+  auth_type TEXT NOT NULL DEFAULT 'none' CHECK (auth_type IN ('none', 'bearer', 'api_key')),
+  api_key TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
@@ -323,6 +369,7 @@ function rebuildLegacyPaymentTables(db) {
         kitchen_sent_at TEXT,
         scheduled_for TEXT,
         delivery_fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (delivery_fee_cents >= 0),
+  public_receipt_token TEXT UNIQUE,
         CHECK (
           (type = 'mesa' AND table_id IS NOT NULL) OR
           (type = 'llevar' AND table_id IS NULL)
@@ -337,7 +384,7 @@ function rebuildLegacyPaymentTables(db) {
         business_date, created_at, updated_at, paid_at, cancelled_at,
         delivery, customer_phone, delivery_address, source, amount_paid_cents,
         opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
-        scheduled_for, delivery_fee_cents
+        scheduled_for, delivery_fee_cents, public_receipt_token
       )
       SELECT
         id, order_number, type, table_id, status, customer_name, notes,
@@ -349,7 +396,7 @@ function rebuildLegacyPaymentTables(db) {
         business_date, created_at, updated_at, paid_at, cancelled_at,
         delivery, customer_phone, delivery_address, source, amount_paid_cents,
         opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
-        scheduled_for, delivery_fee_cents
+        scheduled_for, delivery_fee_cents, public_receipt_token
       FROM orders;
     `);
 
@@ -392,6 +439,37 @@ function rebuildLegacyPaymentTables(db) {
   }
 }
 
+function rebuildStaffRoleTable(db) {
+  const sql = tableSql(db, 'staff');
+  if (!sql || sql.includes("'owner'")) return;
+  db.exec('PRAGMA foreign_keys = OFF;');
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    db.exec(`
+      CREATE TABLE staff_rebuild (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen')),
+        pin_hash TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO staff_rebuild (id, name, role, pin_hash, active, created_at, updated_at)
+      SELECT id, name, role, pin_hash, active, created_at, updated_at FROM staff;
+      DROP TABLE staff;
+      ALTER TABLE staff_rebuild RENAME TO staff;
+      CREATE INDEX IF NOT EXISTS staff_active_idx ON staff(active, name);
+    `);
+    db.exec('COMMIT;');
+  } catch (error) {
+    try { db.exec('ROLLBACK;'); } catch {}
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
+  }
+}
+
 export function migrate(db) {
   db.exec(BASE_SCHEMA);
   db.exec(OPERATIONS_SCHEMA);
@@ -412,6 +490,7 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'scheduled_for', 'TEXT');
   ensureColumn(db, 'orders', 'delivery_fee_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'payment_method_name', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'orders', 'public_receipt_token', 'TEXT');
 
   ensureColumn(db, 'products', 'image_path', 'TEXT');
   ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
@@ -424,11 +503,13 @@ export function migrate(db) {
   ensureColumn(db, 'order_items', 'served_at', 'TEXT');
   ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
 
+  rebuildStaffRoleTable(db);
   rebuildLegacyPaymentTables(db);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS orders_table_open_idx ON orders(table_id, status);
     CREATE INDEX IF NOT EXISTS orders_source_idx ON orders(source, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_receipt_token_idx ON orders(public_receipt_token) WHERE public_receipt_token IS NOT NULL;
     CREATE INDEX IF NOT EXISTS order_items_status_idx ON order_items(status, order_id);
     CREATE INDEX IF NOT EXISTS restaurant_tables_area_idx ON restaurant_tables(area_id, position);
   `);
@@ -537,6 +618,8 @@ const SETTINGS_DEFAULTS = {
   online_delivery_enabled: 'true',
   delivery_fee_cents: '0',
   printer_enabled: 'false',
+  printer_connection: 'network',
+  printer_paper_width_mm: '80',
   kitchen_printer_host: '',
   kitchen_printer_port: '9100',
   receipt_printer_host: '',

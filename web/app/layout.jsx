@@ -1,5 +1,6 @@
 import './globals.css';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import DevelopedBy from '@/components/DevelopedBy';
 
 export const metadata = {
   title: {
@@ -20,6 +21,7 @@ export default function RootLayout({ children }) {
     <html lang="es">
       <body>
         <AuthProvider>{children}</AuthProvider>
+        <DevelopedBy />
       </body>
     </html>
   );

@@ -219,7 +219,7 @@ export function assertValidDate(value) {
   return value;
 }
 
-const STAFF_ROLES = ['admin', 'manager', 'cashier', 'server', 'kitchen'];
+const STAFF_ROLES = ['owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'];
 const PIN_PATTERN = /^\d{4,8}$/;
 
 export const loginSchema = z.object({
@@ -382,3 +382,51 @@ export const paymentMethodUpdateSchema = z
     sortOrder: z.number().int().min(0).max(9999).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');
+
+
+export const integrationCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80),
+  category: z.enum(['payment', 'accounting', 'delivery', 'loyalty', 'other']).optional().default('other'),
+  baseUrl: z.string().trim().max(500).optional().default(''),
+  authType: z.enum(['none', 'bearer', 'api_key']).optional().default('none'),
+  apiKey: z.string().max(1000).optional().default(''),
+  active: z.boolean().optional().default(true),
+  notes: z.string().max(1000).optional().default(''),
+});
+
+export const integrationUpdateSchema = integrationCreateSchema.partial().refine(
+  (value) => Object.keys(value).length > 0,
+  'Envía al menos un campo para actualizar.',
+);
+
+export const inventoryItemCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
+  sku: z.string().trim().max(60).optional().default(''),
+  unit: z.enum(['g', 'ml', 'pz']),
+  minQuantity: z.number().min(0).max(1_000_000).optional().default(0),
+  active: z.boolean().optional().default(true),
+});
+
+export const inventoryItemUpdateSchema = inventoryItemCreateSchema.partial().refine(
+  (value) => Object.keys(value).length > 0,
+  'Envía al menos un campo para actualizar.',
+);
+
+export const inventoryReceiptSchema = z.object({
+  quantity: z.number().positive('La cantidad debe ser mayor que cero.').max(1_000_000),
+  costCents: z.number().int().min(0).max(1_000_000_000).optional().default(0),
+  reference: z.string().trim().max(120).optional().default(''),
+  notes: z.string().trim().max(500).optional().default(''),
+});
+
+export const inventoryAdjustmentSchema = z.object({
+  countedQuantity: z.number().min(0).max(1_000_000),
+  notes: z.string().trim().max(500).optional().default(''),
+});
+
+export const recipeSchema = z.object({
+  ingredients: z.array(z.object({
+    inventoryItemId: z.number().int().positive(),
+    quantity: z.number().positive().max(1_000_000),
+  })).max(100),
+});

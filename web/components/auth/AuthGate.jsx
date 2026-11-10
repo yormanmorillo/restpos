@@ -5,10 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { homeForRole, useAuth } from './AuthProvider';
 
 const ROLE_RULES = [
-  { prefix: '/admin', roles: ['admin', 'manager'] },
-  { prefix: '/caja', roles: ['admin', 'manager', 'cashier'] },
-  { prefix: '/historial', roles: ['admin', 'manager', 'cashier'] },
-  { prefix: '/cocina', roles: ['admin', 'manager', 'cashier', 'kitchen'] },
+  { prefix: '/owner', roles: ['owner'] },
+  { prefix: '/admin', roles: ['owner', 'admin', 'manager'] },
+  { prefix: '/caja', roles: ['owner', 'admin', 'manager', 'cashier'] },
+  { prefix: '/historial', roles: ['owner', 'admin', 'manager', 'cashier'] },
+  { prefix: '/cocina', roles: ['owner', 'admin', 'manager', 'cashier', 'kitchen'] },
 ];
 
 export default function AuthGate({ children }) {

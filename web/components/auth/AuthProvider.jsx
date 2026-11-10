@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 const AuthContext = createContext(null);
 
 export const ROLE_LABELS = {
+  owner: 'Propietario',
   admin: 'Administrador',
   manager: 'Gerente',
   cashier: 'Cajero',
@@ -15,6 +16,7 @@ export const ROLE_LABELS = {
 };
 
 export function homeForRole(role) {
+  if (role === 'owner') return '/owner';
   return role === 'kitchen' ? '/cocina' : '/';
 }
 

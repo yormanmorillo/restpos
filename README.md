@@ -13,6 +13,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Pedidos para llevar y delivery desde el POS, con teléfono y dirección de entrega.
 - Catálogo por categorías, búsqueda instantánea, alta de productos con un toque, cantidades, notas por producto y notas generales del pedido.
 - **Fotos de productos** en el menú del POS y en la página pública de pedidos.
+- **Carga masiva de productos por CSV**, con creación de categorías y actualización de productos existentes.
+- **Inventario real**: insumos, entradas de mercancía, ajustes, movimientos y recetas que descuentan ingredientes al vender.
 - Etiquetas claras de servicio: **Comer aquí**, **Para llevar** y **Delivery** en mesas, caja, cocina, tickets y reportes.
 - Autoguardado del pedido con llaves de línea idempotentes.
 - Descuentos por porcentaje o monto y propina por porcentaje o monto.
@@ -23,6 +25,7 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - **Pagos parciales y mixtos**: el pedido permanece abierto hasta cubrir el saldo; cada pago queda registrado con su método, monto, efectivo recibido y cambio.
 - **Métodos de pago administrables**: efectivo, tarjeta, SINPE Móvil, transferencia y métodos personalizados; se pueden activar o desactivar.
 - **Comprobantes fotográficos** para SINPE Móvil y transferencias, guardados con el pago.
+- **Factura pública compartible y envío por WhatsApp** desde el cobro, el ticket y el historial.
 - Bloqueo de edición cuando existe un pago parcial.
 - Cálculo de cambio y ticket imprimible de 80 mm.
 - Turnos de caja obligatorios para cobrar (configurable), fondo inicial, efectivo esperado, conteo y diferencia.
@@ -57,7 +60,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Permisos por rol en la interfaz y en la API.
 - Límite de intentos de PIN por empleado y por IP.
 - Auditoría de accesos, cambios de pedido, pagos, cocina, equipo y catálogo.
-- Impresión térmica directa por TCP (puerto 9100) para comandas y tickets, además del ticket web.
+- Impresión térmica directa por TCP (puerto 9100) para comandas y tickets, con papel de 58/80 mm; o impresión por el navegador para cualquier impresora instalada.
+- Marca discreta **MATMAX IT Solutions** en el pie del sistema.
 - Respaldos consistentes de SQLite.
 
 ## Producción
@@ -128,7 +132,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **55 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **60 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -138,7 +142,15 @@ npm run db:reset
 
 Borra ventas y pedidos locales y vuelve a cargar el menú y las mesas. Después deberás crear de nuevo el administrador.
 
-### Recuperar el acceso de un administrador
+### Crear la cuenta del propietario del software
+
+El rol `owner` tiene su propio panel en `/owner` y puede administrar el nombre del restaurante, los métodos de pago y las integraciones.
+
+```bash
+npm run owner:create -w server -- "MATMAX Admin" 123456
+```
+
+En Docker se ejecuta dentro del contenedor del API. El propietario aparece en `/login` como un empleado más.
 
 Desde el servidor o una copia de la base:
 
@@ -232,9 +244,11 @@ Navegador / tablet / KDS / cliente en línea
 
 ## Modelo de datos principal
 
-- `staff`, `sessions`: empleados, roles y sesiones.
+- `staff`, `sessions`: empleados, roles (`owner`, `admin`, `manager`, `cashier`, `server`, `kitchen`) y sesiones.
 - `shifts`, `payments`, `payment_photos`: turnos, pagos parciales/mixtos y comprobantes.
 - `payment_methods`: métodos configurables con tipo, icono y permiso de foto.
+- `inventory_items`, `inventory_movements`, `product_ingredients`: stock, entradas, ajustes, consumos y recetas.
+- `integrations`: conexiones externas preparadas para futuros conectores.
 - `areas`, `restaurant_tables`: salón y mesas.
 - `categories`, `products`: catálogo; `products.image_path` guarda la foto.
 - `modifier_groups`, `modifiers`, `product_modifier_groups`, `order_item_modifiers`: opciones y snapshots.
@@ -294,7 +308,7 @@ La API vive en `/api`. Los endpoints de autenticación y `/api/public/*` son pú
 
 - **No procesa tarjetas**: registra el método de pago; la terminal bancaria es externa.
 - **Facturación electrónica**: el ticket es interno; no sustituye la factura electrónica de Hacienda en Costa Rica.
-- **No incluye inventario ni recetas**: el menú se administra, pero no descuenta insumos.
+- **Inventario:** se descuenta al cobrar solo si el producto tiene una receta configurada.
 - **SQLite**: adecuado para una o pocas terminales en el mismo local. Para múltiples sucursales o alta concurrencia habría que migrar a PostgreSQL.
 - **No hay sincronización offline**: el POS requiere conexión con la API.
 - **Impresión térmica**: requiere una impresora ESC/POS accesible por TCP desde el contenedor del API.

@@ -64,16 +64,16 @@ function timeLabel(value, timeZone) {
   });
 }
 
-export function buildKitchenTicket(order, { timeZone } = {}) {
+export function buildKitchenTicket(order, { timeZone, width = WIDTH } = {}) {
   const lines = [];
-  lines.push(rule());
+  lines.push(rule(width));
   lines.push('COCINA');
-  lines.push(rule());
-  lines.push(line(`Pedido ${order.orderNumber}`, timeLabel(order.kitchenSentAt ?? order.createdAt, timeZone)));
+  lines.push(rule(width));
+  lines.push(line(`Pedido ${order.orderNumber}`, timeLabel(order.kitchenSentAt ?? order.createdAt, timeZone), width));
   lines.push(orderOrigin(order));
   if (order.customerName) lines.push(`Cliente: ${order.customerName}`);
   if (order.delivery && order.deliveryAddress) lines.push(`Direccion: ${order.deliveryAddress}`);
-  lines.push(rule());
+  lines.push(rule(width));
   for (const item of order.items.filter((entry) => ['sent', 'preparing'].includes(entry.status))) {
     lines.push(`${item.quantity} x ${item.productName}`);
     for (const modifier of item.modifiers ?? []) {
@@ -81,46 +81,46 @@ export function buildKitchenTicket(order, { timeZone } = {}) {
     }
     if (item.notes) lines.push(`   NOTA: ${item.notes}`);
   }
-  lines.push(rule());
+  lines.push(rule(width));
   if (order.notes) lines.push(`Nota general: ${order.notes}`);
   return ascii(lines.join('\n')) + '\n\n\n';
 }
 
-export function buildReceipt(order, { timeZone } = {}) {
+export function buildReceipt(order, { timeZone, width = WIDTH } = {}) {
   const lines = [];
   lines.push('CASA ROBLE');
   lines.push('Cocina de la casa');
   lines.push('Av. Reforma 123, Centro, CDMX');
   lines.push('Tel. 55 1234 5678');
-  lines.push(rule());
-  lines.push(line(`Ticket: ${order.orderNumber}`, order.businessDate ?? ''));
-  lines.push(line(orderOrigin(order), timeLabel(order.paidAt ?? order.createdAt, timeZone)));
+  lines.push(rule(width));
+  lines.push(line(`Ticket: ${order.orderNumber}`, order.businessDate ?? '', width));
+  lines.push(line(orderOrigin(order), timeLabel(order.paidAt ?? order.createdAt, timeZone), width));
   if (order.customerName) lines.push(`Cliente: ${order.customerName}`);
   if (order.customerPhone) lines.push(`Telefono: ${order.customerPhone}`);
   if (order.delivery && order.deliveryAddress) lines.push(`Direccion: ${order.deliveryAddress}`);
-  lines.push(rule());
+  lines.push(rule(width));
   for (const item of order.items) {
     lines.push(`${item.quantity} x ${item.productName}`);
     for (const modifier of item.modifiers ?? []) lines.push(`   + ${modifier.modifierName}`);
     if (item.notes) lines.push(`   ${item.notes}`);
-    lines.push(line('', money(item.lineTotalCents)));
+    lines.push(line('', money(item.lineTotalCents), width));
   }
-  lines.push(rule());
-  lines.push(line('Subtotal', money(order.subtotalCents)));
-  if (order.discountCents > 0) lines.push(line('Descuento', `-${money(order.discountCents)}`));
-  lines.push(line(`Impuesto (${order.taxRateBps / 100}%)`, money(order.taxCents)));
-  if (order.deliveryFeeCents > 0) lines.push(line('Entrega', money(order.deliveryFeeCents)));
-  if (order.tipCents > 0) lines.push(line('Propina', money(order.tipCents)));
-  lines.push(line('TOTAL', money(order.totalCents)));
-  lines.push(rule());
+  lines.push(rule(width));
+  lines.push(line('Subtotal', money(order.subtotalCents), width));
+  if (order.discountCents > 0) lines.push(line('Descuento', `-${money(order.discountCents)}`, width));
+  lines.push(line(`Impuesto (${order.taxRateBps / 100}%)`, money(order.taxCents), width));
+  if (order.deliveryFeeCents > 0) lines.push(line('Entrega', money(order.deliveryFeeCents), width));
+  if (order.tipCents > 0) lines.push(line('Propina', money(order.tipCents), width));
+  lines.push(line('TOTAL', money(order.totalCents), width));
+  lines.push(rule(width));
   const payments = order.payments ?? [];
   if (payments.length > 0) {
-    for (const payment of payments) lines.push(line(payment.paymentMethodName || payment.paymentMethod, money(payment.amountCents)));
+    for (const payment of payments) lines.push(line(payment.paymentMethodName || payment.paymentMethod, money(payment.amountCents), width));
     const cash = payments.reduce((sum, payment) => sum + (payment.cashReceivedCents ?? 0), 0);
     const change = payments.reduce((sum, payment) => sum + (payment.changeCents ?? 0), 0);
     if (cash > 0) {
-      lines.push(line('Efectivo recibido', money(cash)));
-      lines.push(line('Cambio', money(change)));
+      lines.push(line('Efectivo recibido', money(cash), width));
+      lines.push(line('Cambio', money(change), width));
     }
   }
   lines.push('');
@@ -140,6 +140,9 @@ function escposDocument(text) {
 export function printerConfig(db, kind) {
   if (!getBooleanSetting(db, 'printer_enabled', false)) {
     throw validationError('La impresión térmica no está habilitada.');
+  }
+  if (getSetting(db, 'printer_connection', 'network') !== 'network') {
+    throw validationError('La impresión está configurada para el navegador. Usa “Imprimir” en el ticket.');
   }
   const host = getSetting(db, `${kind}_printer_host`, '').trim();
   const port = Number(getSetting(db, `${kind}_printer_port`, '9100'));
@@ -177,8 +180,9 @@ export function sendToPrinter({ host, port, data, timeoutMs = 4000 }) {
 export function printOrder(db, order, kind, { timeZone } = {}) {
   if (!order) throw notFound('No se encontró el pedido.');
   const config = printerConfig(db, kind);
+  const paperWidth = Number(getSetting(db, 'printer_paper_width_mm', '80')) === 58 ? 32 : 42;
   const text = kind === 'kitchen'
-    ? buildKitchenTicket(order, { timeZone })
-    : buildReceipt(order, { timeZone });
+    ? buildKitchenTicket(order, { timeZone, width: paperWidth })
+    : buildReceipt(order, { timeZone, width: paperWidth });
   return sendToPrinter({ ...config, data: escposDocument(text) });
 }

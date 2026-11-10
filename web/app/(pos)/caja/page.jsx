@@ -48,7 +48,7 @@ export default function CashPage() {
     void load();
   }, [load]);
 
-  const canOperate = ['admin', 'manager', 'cashier'].includes(staff?.role);
+  const canOperate = ['owner', 'admin', 'manager', 'cashier'].includes(staff?.role);
 
   async function openShift() {
     setFormError('');

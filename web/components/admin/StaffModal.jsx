@@ -9,9 +9,10 @@ const ROLES = [
   ['cashier', 'Cajero'],
   ['server', 'Mesero'],
   ['kitchen', 'Cocina'],
+  ['owner', 'Propietario del software'],
 ];
 
-export default function StaffModal({ open, person, onClose, onSubmit }) {
+export default function StaffModal({ open, person, onClose, onSubmit, allowOwner = false }) {
   const [name, setName] = useState('');
   const [role, setRole] = useState('server');
   const [pin, setPin] = useState('');
@@ -76,7 +77,7 @@ export default function StaffModal({ open, person, onClose, onSubmit }) {
         <label className="field">
           <span className="field-label">Rol</span>
           <select className="input select" value={role} onChange={(event) => setRole(event.target.value)}>
-            {ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {ROLES.filter(([value]) => value !== 'owner' || allowOwner || person?.role === 'owner').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
         <label className="field">

@@ -10,6 +10,7 @@ import { useDraftOrder } from '@/lib/useDraftOrder';
 import DiscountModal from './DiscountModal';
 import PaymentModal from './PaymentModal';
 import ProductModifierModal from './ProductModifierModal';
+import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 function SaveIndicator({ status }) {
@@ -35,6 +36,14 @@ function SaveIndicator({ status }) {
 
 function PaymentSuccess({ order, onNewOrder }) {
   const [openingReceipt, setOpeningReceipt] = useState(false);
+  const [printerMode, setPrinterMode] = useState({ enabled: false, connection: 'network' });
+  useEffect(() => {
+    api.getFeatures().then((response) => setPrinterMode({
+      enabled: response.features?.printer_enabled === 'true',
+      connection: response.features?.printer_connection || 'network',
+    })).catch(() => {});
+  }, []);
+
   const paymentNames = [...new Set((order.payments ?? []).map((payment) => payment.paymentMethodName || paymentLabel(payment.paymentMethod)))];
   const paymentText = paymentNames.length > 1
     ? `Pago mixto · ${paymentNames.join(' + ')}`
@@ -105,14 +114,17 @@ function PaymentSuccess({ order, onNewOrder }) {
             <Icon name="printer" size={21} />
             Imprimir ticket
           </button>
-          <button type="button" className="btn btn-secondary btn-large" onClick={async () => {
-            setPrinting(true);
-            setPrintError('');
-            try { await api.printOrder(order.id, 'receipt'); } catch (error) { setPrintError(error.message); } finally { setPrinting(false); }
-          }} disabled={printing}>
-            {printing ? <span className="spinner spinner-small" /> : <Icon name="receipt" size={21} />}
-            Imprimir térmica
-          </button>
+          {printerMode.enabled && printerMode.connection === 'network' ? (
+            <button type="button" className="btn btn-secondary btn-large" onClick={async () => {
+              setPrinting(true);
+              setPrintError('');
+              try { await api.printOrder(order.id, 'receipt'); } catch (error) { setPrintError(error.message); } finally { setPrinting(false); }
+            }} disabled={printing}>
+              {printing ? <span className="spinner spinner-small" /> : <Icon name="receipt" size={21} />}
+              Imprimir térmica
+            </button>
+          ) : null}
+          <ShareWhatsAppButton orderId={order.id} className="btn btn-secondary btn-large" />
           <button type="button" className="btn btn-primary btn-large" onClick={() => onNewOrder(order)}>
             <Icon name="plus" size={21} />
             Nuevo pedido

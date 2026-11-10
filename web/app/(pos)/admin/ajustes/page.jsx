@@ -63,6 +63,8 @@ export default function SettingsPage() {
         online_delivery_enabled: String(bool('online_delivery_enabled')),
         delivery_fee_cents: String(deliveryFeeCents),
         printer_enabled: String(bool('printer_enabled')),
+        printer_connection: settings.printer_connection || 'network',
+        printer_paper_width_mm: String(settings.printer_paper_width_mm || '80'),
         kitchen_printer_host: settings.kitchen_printer_host ?? '',
         kitchen_printer_port: String(settings.kitchen_printer_port || '9100'),
         receipt_printer_host: settings.receipt_printer_host ?? '',
@@ -143,23 +145,33 @@ export default function SettingsPage() {
         <div className="settings-side">
           <section className="panel settings-panel">
             <div className="panel-heading"><div><h2>Impresión térmica</h2><p>Impresoras ESC/POS en red (puerto 9100)</p></div><Icon name="printer" size={22} /></div>
-            <Toggle checked={bool('printer_enabled')} onChange={(value) => update('printer_enabled', value)} title="Habilitar impresión" description="Envía comandas y tickets por red." />
-            <div className="printer-config">
-              <h3>Impresora de cocina</h3>
-              <div className="form-grid">
-                <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.kitchen_printer_host ?? ''} onChange={(event) => update('kitchen_printer_host', event.target.value)} placeholder="192.168.1.50" /></label>
-                <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.kitchen_printer_port ?? '9100'} onChange={(event) => update('kitchen_printer_port', event.target.value)} /></label>
-              </div>
-              <Toggle checked={bool('auto_print_kitchen')} onChange={(value) => update('auto_print_kitchen', value)} title="Imprimir al enviar a cocina" description="Genera la comanda automáticamente." disabled={!bool('printer_enabled')} />
+            <Toggle checked={bool('printer_enabled')} onChange={(value) => update('printer_enabled', value)} title="Habilitar impresión" description="Comandas y tickets en impresora térmica." />
+            <div className="form-grid">
+              <label className="field"><span className="field-label">Conexión</span><select className="input select" value={settings.printer_connection || 'network'} onChange={(event) => update('printer_connection', event.target.value)}><option value="network">Red TCP / ESC-POS</option><option value="browser">Navegador / impresora instalada</option></select></label>
+              <label className="field"><span className="field-label">Ancho del papel</span><select className="input select" value={String(settings.printer_paper_width_mm || '80')} onChange={(event) => update('printer_paper_width_mm', event.target.value)}><option value="80">80 mm</option><option value="58">58 mm</option></select></label>
             </div>
-            <div className="printer-config">
-              <h3>Impresora de tickets</h3>
-              <div className="form-grid">
-                <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.receipt_printer_host ?? ''} onChange={(event) => update('receipt_printer_host', event.target.value)} placeholder="192.168.1.51" /></label>
-                <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.receipt_printer_port ?? '9100'} onChange={(event) => update('receipt_printer_port', event.target.value)} /></label>
-              </div>
-            </div>
-            <p className="field-hint"><Icon name="note" size={14} /> La impresión se envía directamente al puerto TCP de la impresora; no usa el diálogo del navegador.</p>
+            {settings.printer_connection === 'browser' ? (
+              <div className="printer-browser-note"><Icon name="printer" size={18} /><p>Se usará el diálogo de impresión del dispositivo. Funciona con cualquier impresora térmica instalada (USB, Bluetooth o red) mediante su controlador.</p></div>
+            ) : (
+              <>
+                <div className="printer-config">
+                  <h3>Impresora de cocina</h3>
+                  <div className="form-grid">
+                    <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.kitchen_printer_host ?? ''} onChange={(event) => update('kitchen_printer_host', event.target.value)} placeholder="192.168.1.50" /></label>
+                    <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.kitchen_printer_port ?? '9100'} onChange={(event) => update('kitchen_printer_port', event.target.value)} /></label>
+                  </div>
+                  <Toggle checked={bool('auto_print_kitchen')} onChange={(value) => update('auto_print_kitchen', value)} title="Imprimir al enviar a cocina" description="Genera la comanda automáticamente." disabled={!bool('printer_enabled')} />
+                </div>
+                <div className="printer-config">
+                  <h3>Impresora de tickets</h3>
+                  <div className="form-grid">
+                    <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.receipt_printer_host ?? ''} onChange={(event) => update('receipt_printer_host', event.target.value)} placeholder="192.168.1.51" /></label>
+                    <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.receipt_printer_port ?? '9100'} onChange={(event) => update('receipt_printer_port', event.target.value)} /></label>
+                  </div>
+                </div>
+                <p className="field-hint"><Icon name="note" size={14} /> La impresión se envía directamente al puerto TCP de la impresora; no usa el diálogo del navegador.</p>
+              </>
+            )}
           </section>
         </div>
       </div>

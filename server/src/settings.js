@@ -7,6 +7,8 @@ const SETTING_VALIDATORS = {
   online_delivery_enabled: (value) => value === 'true' || value === 'false',
   delivery_fee_cents: (value) => /^\d+$/.test(value) && Number(value) <= 1_000_000,
   printer_enabled: (value) => value === 'true' || value === 'false',
+  printer_connection: (value) => value === 'network' || value === 'browser',
+  printer_paper_width_mm: (value) => value === '58' || value === '80',
   kitchen_printer_host: (value) => /^[a-zA-Z0-9._:-]{0,255}$/.test(value),
   kitchen_printer_port: (value) => /^\d{1,5}$/.test(value) && Number(value) > 0 && Number(value) < 65536,
   receipt_printer_host: (value) => /^[a-zA-Z0-9._:-]{0,255}$/.test(value),
