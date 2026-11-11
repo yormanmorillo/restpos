@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from '@/components/Icon';
 import Modal from '@/components/Modal';
 import { formatPercentBps } from '@restpos/shared/money';
