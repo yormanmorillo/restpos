@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
-import { homeForRole, ROLE_LABELS, useAuth } from '@/components/auth/AuthProvider';
+import { homeForRole, useAuth } from '@/components/auth/AuthProvider';
 
 const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'];
 
@@ -27,6 +27,7 @@ function LoginContent() {
   const [setupName, setSetupName] = useState('');
   const [setupPin, setSetupPin] = useState('');
   const [setupConfirm, setSetupConfirm] = useState('');
+  const [setupToken, setSetupToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -100,8 +101,8 @@ function LoginContent() {
       setError('Escribe el nombre del administrador.');
       return;
     }
-    if (!/^\d{4,8}$/.test(setupPin)) {
-      setError('El PIN debe tener entre 4 y 8 dígitos.');
+    if (!/^\d{6,8}$/.test(setupPin)) {
+      setError('El PIN debe tener entre 6 y 8 dígitos.');
       return;
     }
     if (setupPin !== setupConfirm) {
@@ -111,7 +112,7 @@ function LoginContent() {
     setBusy(true);
     setError('');
     try {
-      const response = await api.setupAdmin({ name: setupName.trim(), pin: setupPin });
+      const response = await api.setupAdmin({ name: setupName.trim(), pin: setupPin, setupToken: setupToken.trim() || undefined });
       setStaff(response.staff);
       router.replace('/');
     } catch (setupError) {
@@ -156,7 +157,7 @@ function LoginContent() {
               />
             </label>
             <label className="field">
-              <span className="field-label">PIN de 4 a 8 dígitos</span>
+              <span className="field-label">PIN de 6 a 8 dígitos</span>
               <input
                 className="input login-text-input"
                 type="password"
@@ -164,7 +165,7 @@ function LoginContent() {
                 pattern="[0-9]*"
                 value={setupPin}
                 onChange={(event) => setSetupPin(event.target.value.replace(/\D/g, '').slice(0, 8))}
-                placeholder="••••"
+                placeholder="••••••"
               />
             </label>
             <label className="field">
@@ -176,6 +177,18 @@ function LoginContent() {
                 value={setupConfirm}
                 onChange={(event) => setSetupConfirm(event.target.value.replace(/\D/g, '').slice(0, 8))}
                 placeholder="••••"
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">Token de instalación <small>(si aplica)</small></span>
+              <input
+                className="input login-text-input"
+                type="password"
+                value={setupToken}
+                onChange={(event) => setSetupToken(event.target.value)}
+                placeholder="Token configurado por el proveedor"
+                autoComplete="off"
+                maxLength={200}
               />
             </label>
             {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -191,7 +204,7 @@ function LoginContent() {
             </button>
             <div className="pin-person">
               <span className="avatar avatar-large">{initials(selectedStaff.name)}</span>
-              <span className="eyebrow">{ROLE_LABELS[selectedStaff.role] ?? selectedStaff.role}</span>
+              <span className="eyebrow">Acceso del equipo</span>
               <h2>Hola, {selectedStaff.name.split(' ')[0]}</h2>
               <p className="login-subtitle">Ingresa tu PIN para abrir tu sesión.</p>
             </div>
@@ -241,7 +254,6 @@ function LoginContent() {
                   >
                     <span className="avatar avatar-medium">{initials(person.name)}</span>
                     <span className="staff-login-name">{person.name}</span>
-                    <span className="staff-login-role">{ROLE_LABELS[person.role] ?? person.role}</span>
                     <Icon name="chevronRight" size={18} />
                   </button>
                 ))}

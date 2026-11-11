@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { centsToInput, parseMoneyToCents } from '@restpos/shared/money';
 
 function Toggle({ checked, onChange, title, description, disabled = false }) {
@@ -16,6 +17,8 @@ function Toggle({ checked, onChange, title, description, disabled = false }) {
 }
 
 export default function SettingsPage() {
+  const { staff } = useAuth();
+  const canConfigurePrinters = staff?.role === 'owner';
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,6 +61,9 @@ export default function SettingsPage() {
       }
       const payload = {
         restaurant_name: settings.restaurant_name,
+        restaurant_tagline: settings.restaurant_tagline ?? '',
+        restaurant_address: settings.restaurant_address ?? '',
+        restaurant_phone: settings.restaurant_phone ?? '',
         online_ordering_enabled: String(bool('online_ordering_enabled')),
         online_pickup_enabled: String(bool('online_pickup_enabled')),
         online_delivery_enabled: String(bool('online_delivery_enabled')),
@@ -65,10 +71,12 @@ export default function SettingsPage() {
         printer_enabled: String(bool('printer_enabled')),
         printer_connection: settings.printer_connection || 'network',
         printer_paper_width_mm: String(settings.printer_paper_width_mm || '80'),
-        kitchen_printer_host: settings.kitchen_printer_host ?? '',
-        kitchen_printer_port: String(settings.kitchen_printer_port || '9100'),
-        receipt_printer_host: settings.receipt_printer_host ?? '',
-        receipt_printer_port: String(settings.receipt_printer_port || '9100'),
+        ...(canConfigurePrinters ? {
+          kitchen_printer_host: settings.kitchen_printer_host ?? '',
+          kitchen_printer_port: String(settings.kitchen_printer_port || '9100'),
+          receipt_printer_host: settings.receipt_printer_host ?? '',
+          receipt_printer_port: String(settings.receipt_printer_port || '9100'),
+        } : {}),
         auto_print_kitchen: String(bool('auto_print_kitchen')),
         require_shift: String(bool('require_shift')),
       };
@@ -121,6 +129,18 @@ export default function SettingsPage() {
               <span className="field-label">Nombre del restaurante</span>
               <input className="input" value={settings.restaurant_name ?? ''} onChange={(event) => update('restaurant_name', event.target.value)} maxLength={80} />
             </label>
+            <label className="field">
+              <span className="field-label">Frase o especialidad</span>
+              <input className="input" value={settings.restaurant_tagline ?? ''} onChange={(event) => update('restaurant_tagline', event.target.value)} maxLength={80} placeholder="Ej. Cocina de la casa" />
+            </label>
+            <label className="field">
+              <span className="field-label">Dirección para el ticket</span>
+              <input className="input" value={settings.restaurant_address ?? ''} onChange={(event) => update('restaurant_address', event.target.value)} maxLength={200} placeholder="Calle, número, ciudad" />
+            </label>
+            <label className="field">
+              <span className="field-label">Teléfono para el ticket</span>
+              <input className="input" value={settings.restaurant_phone ?? ''} onChange={(event) => update('restaurant_phone', event.target.value)} maxLength={30} placeholder="+506 0000 0000" />
+            </label>
           </section>
 
           <section className="panel settings-panel">
@@ -156,18 +176,22 @@ export default function SettingsPage() {
               <>
                 <div className="printer-config">
                   <h3>Impresora de cocina</h3>
-                  <div className="form-grid">
-                    <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.kitchen_printer_host ?? ''} onChange={(event) => update('kitchen_printer_host', event.target.value)} placeholder="192.168.1.50" /></label>
-                    <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.kitchen_printer_port ?? '9100'} onChange={(event) => update('kitchen_printer_port', event.target.value)} /></label>
-                  </div>
+                  {canConfigurePrinters ? (
+                    <div className="form-grid">
+                      <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.kitchen_printer_host ?? ''} onChange={(event) => update('kitchen_printer_host', event.target.value)} placeholder="192.168.1.50" /></label>
+                      <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.kitchen_printer_port ?? '9100'} onChange={(event) => update('kitchen_printer_port', event.target.value)} /></label>
+                    </div>
+                  ) : <p className="field-hint"><Icon name="lock" size={14} /> Solo el super admin puede cambiar la IP o el puerto.</p>}
                   <Toggle checked={bool('auto_print_kitchen')} onChange={(value) => update('auto_print_kitchen', value)} title="Imprimir al enviar a cocina" description="Genera la comanda automáticamente." disabled={!bool('printer_enabled')} />
                 </div>
                 <div className="printer-config">
                   <h3>Impresora de tickets</h3>
-                  <div className="form-grid">
-                    <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.receipt_printer_host ?? ''} onChange={(event) => update('receipt_printer_host', event.target.value)} placeholder="192.168.1.51" /></label>
-                    <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.receipt_printer_port ?? '9100'} onChange={(event) => update('receipt_printer_port', event.target.value)} /></label>
-                  </div>
+                  {canConfigurePrinters ? (
+                    <div className="form-grid">
+                      <label className="field"><span className="field-label">Host o IP</span><input className="input" value={settings.receipt_printer_host ?? ''} onChange={(event) => update('receipt_printer_host', event.target.value)} placeholder="192.168.1.51" /></label>
+                      <label className="field"><span className="field-label">Puerto</span><input className="input" type="number" value={settings.receipt_printer_port ?? '9100'} onChange={(event) => update('receipt_printer_port', event.target.value)} /></label>
+                    </div>
+                  ) : <p className="field-hint"><Icon name="lock" size={14} /> Solo el super admin puede cambiar la IP o el puerto.</p>}
                 </div>
                 <p className="field-hint"><Icon name="note" size={14} /> La impresión se envía directamente al puerto TCP de la impresora; no usa el diálogo del navegador.</p>
               </>

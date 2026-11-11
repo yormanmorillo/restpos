@@ -21,6 +21,7 @@ function withTotals(order) {
     items,
     discountType: order.discountType,
     discountValue: order.discountValue,
+    discountReason: order.discountReason ?? '',
     tipType: order.tipType,
     tipValue: order.tipValue,
     taxRateBps: order.taxRateBps,
@@ -55,6 +56,7 @@ function toPayload(order) {
     scheduledFor: order.scheduledFor ?? null,
     discountType: order.discountType,
     discountValue: order.discountValue,
+    discountReason: order.discountReason ?? '',
     tipType: order.tipType,
     tipValue: order.tipValue,
   };
@@ -243,11 +245,12 @@ export function useDraftOrder(initialOrder) {
     }));
   }, [commit]);
 
-  const setDiscount = useCallback((discountType, discountValue) => {
+  const setDiscount = useCallback((discountType, discountValue, discountReason = '') => {
     commit((previous) => ({
       ...previous,
       discountType,
       discountValue: discountType === 'none' ? 0 : discountValue,
+      discountReason: discountType === 'none' ? '' : String(discountReason).slice(0, 200),
     }));
   }, [commit]);
 

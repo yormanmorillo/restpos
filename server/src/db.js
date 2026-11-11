@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS orders (
   discount_type TEXT NOT NULL DEFAULT 'none' CHECK (discount_type IN ('none', 'percent', 'fixed')),
   discount_value INTEGER NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
   discount_cents INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
+  discount_reason TEXT NOT NULL DEFAULT '',
   tax_rate_bps INTEGER NOT NULL DEFAULT 1600 CHECK (tax_rate_bps BETWEEN 0 AND 10000),
   tax_cents INTEGER NOT NULL DEFAULT 0 CHECK (tax_cents >= 0),
   tip_type TEXT NOT NULL DEFAULT 'none' CHECK (tip_type IN ('none', 'percent', 'fixed')),
@@ -88,7 +89,8 @@ CREATE TABLE IF NOT EXISTS order_items (
   quantity INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 99),
   notes TEXT NOT NULL DEFAULT '',
   line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0),
-  sort_order INTEGER NOT NULL DEFAULT 0
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  sent_quantity INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS order_items_client_key_unique
@@ -343,6 +345,7 @@ function rebuildLegacyPaymentTables(db) {
         discount_type TEXT NOT NULL DEFAULT 'none' CHECK (discount_type IN ('none', 'percent', 'fixed')),
         discount_value INTEGER NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
         discount_cents INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
+        discount_reason TEXT NOT NULL DEFAULT '',
         tax_rate_bps INTEGER NOT NULL DEFAULT 1600 CHECK (tax_rate_bps BETWEEN 0 AND 10000),
         tax_cents INTEGER NOT NULL DEFAULT 0 CHECK (tax_cents >= 0),
         tip_type TEXT NOT NULL DEFAULT 'none' CHECK (tip_type IN ('none', 'percent', 'fixed')),
@@ -378,7 +381,7 @@ function rebuildLegacyPaymentTables(db) {
 
       INSERT INTO orders_rebuild (
         id, order_number, type, table_id, status, customer_name, notes,
-        subtotal_cents, discount_type, discount_value, discount_cents,
+        subtotal_cents, discount_type, discount_value, discount_cents, discount_reason,
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method, payment_method_name, cash_received_cents, change_cents,
         business_date, created_at, updated_at, paid_at, cancelled_at,
@@ -388,7 +391,7 @@ function rebuildLegacyPaymentTables(db) {
       )
       SELECT
         id, order_number, type, table_id, status, customer_name, notes,
-        subtotal_cents, discount_type, discount_value, discount_cents,
+        subtotal_cents, discount_type, discount_value, discount_cents, discount_reason,
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method,
         COALESCE(payment_method_name, CASE payment_method WHEN 'efectivo' THEN 'Efectivo' WHEN 'tarjeta' THEN 'Tarjeta' ELSE '' END),
@@ -430,6 +433,7 @@ function rebuildLegacyPaymentTables(db) {
     db.exec('DROP TABLE orders;');
     db.exec('ALTER TABLE orders_rebuild RENAME TO orders;');
     db.exec('ALTER TABLE payments_rebuild RENAME TO payments;');
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS one_open_order_per_table ON orders(table_id) WHERE status = 'abierta' AND table_id IS NOT NULL;");
     db.exec('COMMIT;');
   } catch (error) {
     try { db.exec('ROLLBACK;'); } catch {}
@@ -491,6 +495,7 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'delivery_fee_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'payment_method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'public_receipt_token', 'TEXT');
+  ensureColumn(db, 'orders', 'discount_reason', "TEXT NOT NULL DEFAULT ''");
 
   ensureColumn(db, 'products', 'image_path', 'TEXT');
   ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
@@ -502,6 +507,8 @@ export function migrate(db) {
   ensureColumn(db, 'order_items', 'ready_at', 'TEXT');
   ensureColumn(db, 'order_items', 'served_at', 'TEXT');
   ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'order_items', 'sent_quantity', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec("UPDATE order_items SET sent_quantity = quantity WHERE status <> 'pending' AND sent_quantity = 0");
 
   rebuildStaffRoleTable(db);
   rebuildLegacyPaymentTables(db);
@@ -613,6 +620,9 @@ const SEED_TABLES = [
 
 const SETTINGS_DEFAULTS = {
   restaurant_name: 'Casa Roble',
+  restaurant_tagline: 'Cocina de la casa',
+  restaurant_address: '',
+  restaurant_phone: '',
   online_ordering_enabled: 'false',
   online_pickup_enabled: 'true',
   online_delivery_enabled: 'true',

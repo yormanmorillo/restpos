@@ -45,6 +45,9 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Asignación de grupos a cada producto.
 - Administración de áreas y mesas, capacidad y activación.
 - Equipo con roles `owner` (super admin), `admin` (gerente general), `manager`, `cashier`, `server` y `kitchen`.
+- PINs nuevos de 6 a 8 dígitos, bloqueo progresivo por empleado + IP y sesiones invalidadas al cambiar PIN.
+- Descuentos limitados por rol (mesero/cajero 10 %, gerente 25 %, super admin 100 %), con motivo obligatorio y auditoría.
+- Cortesía con total cero mediante un cierre auditado, sin registrar un cobro ficticio.
 - Jerarquía: solo el super admin crea o modifica métodos de pago y integraciones; el gerente general puede activarlos o desactivarlos.
 - Ajustes de restaurante, pedidos en línea, costo de entrega y configuración de impresoras.
 
@@ -69,10 +72,10 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 
 | Servicio | URL |
 |---|---|
-| POS | <https://totem.lapizzeria.food> |
-| Pedidos en línea | <https://totem.lapizzeria.food/pedir> |
-| Cocina | <https://totem.lapizzeria.food/cocina> |
-| Panel Dokploy | <https://admin.lapizzeria.food> |
+| POS | <https://pos.example.com> |
+| Pedidos en línea | <https://pos.example.com/pedir> |
+| Cocina | <https://pos.example.com/cocina> |
+| Panel Dokploy | <https://panel.example.com> |
 
 El POS usa autenticación propia por empleado. La página pública `/pedir` y los endpoints `/api/public/*` son los únicos accesibles sin sesión. La guía de operación, despliegue, respaldos y restauración está en [docs/DEPLOY-VPS.md](docs/DEPLOY-VPS.md).
 
@@ -133,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **61 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **74 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -145,10 +148,16 @@ Borra ventas y pedidos locales y vuelve a cargar el menú y las mesas. Después 
 
 ### Crear la cuenta del propietario del software
 
+Define `PIN_SEGURO` con 6 a 8 dígitos, sin secuencias ni números repetidos:
+
+```bash
+export PIN_SEGURO='...'
+```
+
 El rol `owner` tiene su propio panel en `/owner` y puede administrar el nombre del restaurante, los métodos de pago y las integraciones.
 
 ```bash
-npm run owner:create -w server -- "MATMAX Admin" 123456
+npm run owner:create -w server -- "MATMAX Admin" "$PIN_SEGURO"
 ```
 
 En Docker se ejecuta dentro del contenedor del API. El propietario aparece en `/login` como un empleado más.
@@ -156,7 +165,7 @@ En Docker se ejecuta dentro del contenedor del API. El propietario aparece en `/
 Desde el servidor o una copia de la base:
 
 ```bash
-npm run admin:reset-pin -w server -- "Administrador" 123456
+npm run admin:reset-pin -w server -- "Administrador" "$PIN_SEGURO"
 ```
 
 Restablece el PIN, reactiva la cuenta, la deja como `admin` y cierra sus sesiones activas. En Docker se ejecuta dentro del contenedor del API.

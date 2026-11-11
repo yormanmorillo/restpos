@@ -91,6 +91,12 @@ export default function Icon({ name, size = 24, className = '', strokeWidth = 1.
         <path d="M14.5 5.5l4 4" />
       </>
     ),
+    gift: (
+      <>
+        <rect x="3.5" y="9" width="17" height="12" rx="2" />
+        <path d="M2.5 9h19v4h-19zM12 9v12M12 9c-2.5 0-5-1.5-5-3.5S9.5 3 12 6c2.5-3 5-2.5 5-.5S14.5 9 12 9Z" />
+      </>
+    ),
     tag: (
       <>
         <path d="M3 12V4h8l10 10-8 8L3 12Z" />

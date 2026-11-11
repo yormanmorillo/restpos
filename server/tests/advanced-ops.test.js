@@ -74,9 +74,9 @@ describe('propietario y factura pública', () => {
   });
 
   it('solo el propietario puede crear otro propietario', async () => {
-    const denied = await ctx.agent.post('/api/staff').send({ name: 'Owner 2', role: 'owner', pin: '1111' });
+    const denied = await ctx.agent.post('/api/staff').send({ name: 'Owner 2', role: 'owner', pin: '468135' });
     expect(denied.status).toBe(403);
-    const allowed = await ownerAgent.post('/api/staff').send({ name: 'Owner 2', role: 'owner', pin: '1111' });
+    const allowed = await ownerAgent.post('/api/staff').send({ name: 'Owner 2', role: 'owner', pin: '468135' });
     expect(allowed.status).toBe(201);
     expect(allowed.body.staff.role).toBe('owner');
   });

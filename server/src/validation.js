@@ -103,6 +103,7 @@ export const draftSchema = z
     scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
     discountType: z.enum(['none', 'percent', 'fixed'], { error: 'El tipo de descuento no es válido.' }).optional(),
     discountValue: adjustmentValue.optional(),
+    discountReason: text(200, 'El motivo del descuento').optional(),
     tipType: z.enum(['none', 'percent', 'fixed'], { error: 'El tipo de propina no es válido.' }).optional(),
     tipValue: adjustmentValue.optional(),
   })
@@ -135,6 +136,10 @@ export const draftSchema = z
       });
     }
   });
+
+export const courtesySchema = z.object({
+  reason: text(200, 'El motivo de la cortesía').refine((value) => value.length >= 3, 'Indica el motivo de la cortesía.'),
+});
 
 export const payOrderSchema = z.object({
   paymentMethod: z
@@ -221,6 +226,7 @@ export function assertValidDate(value) {
 
 const STAFF_ROLES = ['owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'];
 const PIN_PATTERN = /^\d{4,8}$/;
+const NEW_PIN_PATTERN = /^\d{6,8}$/;
 
 export const loginSchema = z.object({
   staffId: z.number().int().positive('Selecciona un empleado.'),
@@ -229,13 +235,14 @@ export const loginSchema = z.object({
 
 export const setupSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.'),
-  pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.'),
+  pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener entre 6 y 8 dígitos.'),
+  setupToken: z.string().trim().max(200).optional(),
 });
 
 export const staffCreateSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.'),
   role: z.enum(STAFF_ROLES, { error: 'Selecciona un rol válido.' }),
-  pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.'),
+  pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener entre 6 y 8 dígitos.'),
   active: z.boolean().optional().default(true),
 });
 
@@ -243,7 +250,7 @@ export const staffUpdateSchema = z
   .object({
     name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.').optional(),
     role: z.enum(STAFF_ROLES, { error: 'Selecciona un rol válido.' }).optional(),
-    pin: z.string().regex(PIN_PATTERN, 'El PIN debe tener entre 4 y 8 dígitos.').optional(),
+    pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener entre 6 y 8 dígitos.').optional(),
     active: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');

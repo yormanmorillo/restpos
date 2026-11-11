@@ -6,6 +6,7 @@ const PAYMENT_LABELS = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
   sinpe: 'SINPE Móvil',
+  cortesia: 'Cortesía',
   transferencia: 'Transferencia bancaria',
   otro: 'Otro',
 };

@@ -128,6 +128,7 @@ describe('mesas y estados de pedidos', () => {
     const response = await addGuacamole(order.id, 2, {
       discountType: 'percent',
       discountValue: 1000,
+      discountReason: 'Prueba de descuento',
       tipType: 'percent',
       tipValue: 1500,
     });
@@ -167,6 +168,7 @@ describe('mesas y estados de pedidos', () => {
     await addGuacamole(order.id, 2, {
       discountType: 'percent',
       discountValue: 1000,
+      discountReason: 'Prueba de descuento',
       tipType: 'percent',
       tipValue: 1500,
     });

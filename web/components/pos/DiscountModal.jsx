@@ -7,15 +7,19 @@ import { centsToInput, parseMoneyToCents, parsePercentToBps } from '@restpos/sha
 import { formatMoney } from '@/lib/format';
 
 const PERCENT_PRESETS = [5, 10, 15, 20];
+const ROLE_LIMITS = { server: 10, cashier: 10, manager: 25, admin: 100, owner: 100 };
 
-export default function DiscountModal({ open, onClose, order, onApply }) {
+
+export default function DiscountModal({ open, onClose, order, onApply, staffRole = 'server' }) {
   const [type, setType] = useState('percent');
   const [value, setValue] = useState('10');
   const [error, setError] = useState('');
+  const [reason, setReason] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setError('');
+    setReason(order.discountReason ?? '');
     if (order.discountType === 'percent') {
       setType('percent');
       setValue(String(order.discountValue / 100));
@@ -31,7 +35,7 @@ export default function DiscountModal({ open, onClose, order, onApply }) {
   function applyDiscount() {
     try {
       if (type === 'none') {
-        onApply('none', 0);
+        onApply('none', 0, '');
         onClose();
         return;
       }
@@ -40,7 +44,11 @@ export default function DiscountModal({ open, onClose, order, onApply }) {
         setError('El descuento debe ser mayor que cero.');
         return;
       }
-      onApply(type, parsed);
+      if (reason.trim().length < 3) {
+        setError('Indica el motivo del descuento (mínimo 3 caracteres).');
+        return;
+      }
+      onApply(type, parsed, reason.trim());
       onClose();
     } catch (applyError) {
       setError(applyError.message);
@@ -63,7 +71,7 @@ export default function DiscountModal({ open, onClose, order, onApply }) {
               type="button"
               className="btn btn-danger-quiet"
               onClick={() => {
-                onApply('none', 0);
+                onApply('none', 0, '');
                 onClose();
               }}
             >
@@ -158,6 +166,21 @@ export default function DiscountModal({ open, onClose, order, onApply }) {
         <span>Subtotal actual</span>
         <strong>{formatMoney(order.subtotalCents)}</strong>
       </div>
+      <div className="calculation-note">
+        <span>Límite de tu rol</span>
+        <strong>{ROLE_LIMITS[staffRole] ?? 10}% del subtotal</strong>
+      </div>
+      <label className="field">
+        <span className="field-label">Motivo del descuento <small>(obligatorio)</small></span>
+        <textarea
+          className="input"
+          rows={2}
+          maxLength={200}
+          value={reason}
+          onChange={(event) => { setReason(event.target.value); setError(''); }}
+          placeholder="Ej. cliente frecuente, promoción, cortesía autorizada…"
+        />
+      </label>
     </Modal>
   );
 }

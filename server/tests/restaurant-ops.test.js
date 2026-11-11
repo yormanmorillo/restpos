@@ -31,6 +31,7 @@ describe('autenticación y permisos', () => {
     const options = await anonymous.get('/api/auth/options');
     expect(options.status).toBe(200);
     expect(options.body.staff).toHaveLength(1);
+    expect(options.body.staff[0].role).toBeUndefined();
 
     const wrong = await anonymous
       .post('/api/auth/login')
@@ -49,12 +50,12 @@ describe('autenticación y permisos', () => {
     const created = await ctx.agent.post('/api/staff').send({
       name: 'Chef QA',
       role: 'kitchen',
-      pin: '2468',
+      pin: '246813',
     });
     expect(created.status).toBe(201);
     const chefId = created.body.staff.id;
     const chefAgent = request.agent(ctx.app);
-    const login = await chefAgent.post('/api/auth/login').send({ staffId: chefId, pin: '2468' });
+    const login = await chefAgent.post('/api/auth/login').send({ staffId: chefId, pin: '246813' });
     expect(login.status).toBe(200);
 
     expect((await chefAgent.get('/api/kitchen/orders')).status).toBe(200);
@@ -66,7 +67,7 @@ describe('autenticación y permisos', () => {
     const anonymous = request.agent(ctx.app);
     const status = await anonymous.get('/api/auth/status');
     expect(status.body.setupRequired).toBe(false);
-    const setup = await anonymous.post('/api/auth/setup').send({ name: 'Otro', pin: '9876' });
+    const setup = await anonymous.post('/api/auth/setup').send({ name: 'Otro', pin: '468135' });
     expect(setup.status).toBe(409);
   });
 });

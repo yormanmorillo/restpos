@@ -2,7 +2,7 @@ import {
   createHash,
   randomBytes,
   scryptSync,
-  timingSafeEqual,
+  timingSafeEqual as secureEqual,
 } from 'node:crypto';
 import { AppError, validationError } from './errors.js';
 import { loginSchema, setupSchema, parseOrThrow } from './validation.js';
@@ -10,11 +10,44 @@ import { loginSchema, setupSchema, parseOrThrow } from './validation.js';
 export const SESSION_COOKIE = 'restpos_session';
 const SESSION_TTL_MS_DEFAULT = 12 * 60 * 60 * 1000;
 const PIN_PATTERN = /^\d{4,8}$/;
+const STRONG_PIN_PATTERN = /^\d{6,8}$/;
+const TRIVIAL_PINS = new Set([
+  '000000', '111111', '222222', '333333', '444444', '555555', '666666', '777777', '888888', '999999',
+  '123456', '654321', '121212', '112233', '123123', '159753', '147258', '102030', '246810', '135790',
+]);
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 8;
-const MAX_IP_ATTEMPTS = 40;
+const MAX_IP_ATTEMPTS = 60;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const SHORT_BLOCK_MS = 60 * 1000;
+
+function isSequential(pin) {
+  const digits = [...pin].map(Number);
+  const ascending = digits.every((digit, index) => index === 0 || digit === digits[index - 1] + 1);
+  const descending = digits.every((digit, index) => index === 0 || digit === digits[index - 1] - 1);
+  return ascending || descending;
+}
+
+export function assertPinStrength(pin, role = null) {
+  const value = String(pin ?? '');
+  if (!STRONG_PIN_PATTERN.test(value)) {
+    throw validationError('El PIN debe tener entre 6 y 8 dígitos.');
+  }
+  if (TRIVIAL_PINS.has(value) || new Set(value).size === 1 || isSequential(value)) {
+    throw validationError('El PIN es demasiado predecible. Elige otro.');
+  }
+  if (role && !['owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'].includes(role)) {
+    throw validationError('Rol inválido para el PIN.');
+  }
+  return value;
+}
+
+function safeCompare(a, b) {
+  const left = Buffer.from(String(a ?? ''));
+  const right = Buffer.from(String(b ?? ''));
+  return left.length === right.length && secureEqual(left, right);
+}
 
 export function hashPin(pin) {
   if (!PIN_PATTERN.test(String(pin))) {
@@ -31,7 +64,7 @@ export function verifyPin(pin, stored) {
   if (scheme !== 'scrypt' || !salt || !digestHex) return false;
   const expected = Buffer.from(digestHex, 'hex');
   const actual = scryptSync(pin, salt, expected.length);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  return expected.length === actual.length && secureEqual(expected, actual);
 }
 
 function hashToken(token) {
@@ -47,7 +80,11 @@ function parseCookies(header = '') {
       .map((part) => {
         const index = part.indexOf('=');
         if (index === -1) return [part, ''];
-        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+        try {
+          return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+        } catch {
+          return [part.slice(0, index), ''];
+        }
       }),
   );
 }
@@ -143,25 +180,41 @@ function clearSessionCookie(res, config) {
   });
 }
 
-function recordLoginFailure(key) {
-  const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (!entry || now - entry.first > ATTEMPT_WINDOW_MS) {
-    loginAttempts.set(key, { count: 1, first: now });
-    return;
+function pruneLoginAttempts(now = Date.now()) {
+  for (const [key, entry] of loginAttempts) {
+    const expired = now - entry.first > ATTEMPT_WINDOW_MS;
+    const blockExpired = !entry.blockedUntil || now >= entry.blockedUntil;
+    if (expired && blockExpired) loginAttempts.delete(key);
   }
-  entry.count += 1;
 }
 
-function tooManyAttempts(key) {
+function recordLoginFailure(key, now = Date.now()) {
+  pruneLoginAttempts(now);
+  const limit = key.startsWith('ip:') ? MAX_IP_ATTEMPTS : MAX_ATTEMPTS;
+  const entry = loginAttempts.get(key);
+  if (!entry || now - entry.first > ATTEMPT_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, first: now, blockedUntil: 0 });
+    return false;
+  }
+  entry.count += 1;
+  if (entry.count >= limit) {
+    entry.blockedUntil = now + ATTEMPT_WINDOW_MS;
+  } else if (entry.count >= 5) {
+    entry.blockedUntil = now + Math.min(15 * 60 * 1000, SHORT_BLOCK_MS * (entry.count - 4));
+  }
+  return entry.blockedUntil > 0;
+}
+
+function tooManyAttempts(key, now = Date.now()) {
+  pruneLoginAttempts(now);
   const entry = loginAttempts.get(key);
   if (!entry) return false;
-  if (Date.now() - entry.first > ATTEMPT_WINDOW_MS) {
+  if (entry.blockedUntil && now < entry.blockedUntil) return true;
+  if (now - entry.first > ATTEMPT_WINDOW_MS) {
     loginAttempts.delete(key);
     return false;
   }
-  const limit = key.startsWith('ip:') ? MAX_IP_ATTEMPTS : MAX_ATTEMPTS;
-  return entry.count >= limit;
+  return entry.count >= (key.startsWith('ip:') ? MAX_IP_ATTEMPTS : MAX_ATTEMPTS);
 }
 
 export function registerAuthRoutes(router, db, config) {
@@ -184,9 +237,10 @@ export function registerAuthRoutes(router, db, config) {
 
   router.get('/auth/options', (req, res) => {
     const staff = db
-      .prepare('SELECT id, name, role FROM staff WHERE active = 1 ORDER BY name')
+      .prepare('SELECT id, name FROM staff WHERE active = 1 ORDER BY name')
       .all()
-      .map((row) => ({ id: Number(row.id), name: row.name, role: row.role }));
+      .map((row) => ({ id: Number(row.id), name: row.name }));
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ staff });
   });
 
@@ -197,6 +251,14 @@ export function registerAuthRoutes(router, db, config) {
         throw new AppError(409, 'SETUP_COMPLETE', 'La configuración inicial ya fue completada.');
       }
       const input = parseOrThrow(setupSchema, req.body);
+      if (!config.setupToken) {
+        if (config.nodeEnv === 'production') {
+          throw new AppError(503, 'SETUP_DISABLED', 'Configura SETUP_TOKEN antes de crear el administrador inicial.');
+        }
+      } else if (!safeCompare(req.get('x-setup-token') || input.setupToken, config.setupToken)) {
+        throw new AppError(403, 'SETUP_FORBIDDEN', 'Se requiere el token de instalación para crear el administrador.');
+      }
+      assertPinStrength(input.pin, 'admin');
       const now = new Date().toISOString();
       const result = db
         .prepare(`
@@ -224,8 +286,9 @@ export function registerAuthRoutes(router, db, config) {
       if (!staff || !staff.active) {
         throw new AppError(401, 'INVALID_CREDENTIALS', 'PIN incorrecto o empleado inactivo.');
       }
-      const key = `staff:${input.staffId}`;
-      const ipKey = `ip:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
+      const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+      const key = `staff:${input.staffId}:${clientIp}`;
+      const ipKey = `ip:${clientIp}`;
       if (tooManyAttempts(key) || tooManyAttempts(ipKey)) {
         throw new AppError(429, 'TOO_MANY_ATTEMPTS', 'Demasiados intentos. Espera unos minutos.');
       }
@@ -235,6 +298,7 @@ export function registerAuthRoutes(router, db, config) {
         throw new AppError(401, 'INVALID_CREDENTIALS', 'PIN incorrecto.');
       }
       loginAttempts.delete(key);
+      loginAttempts.delete(ipKey);
       db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString());
       createSession(db, Number(staff.id), config, res);
       db.prepare(`
@@ -262,19 +326,16 @@ export function registerAuthRoutes(router, db, config) {
   });
 }
 
-function validationPin(value) {
-  if (!PIN_PATTERN.test(String(value))) {
-    throw validationError('El PIN debe tener entre 4 y 8 dígitos.');
-  }
-  return value;
+function validationPin(value, role = null) {
+  return assertPinStrength(value, role);
 }
 
 export function createStaff(db, input, staffId, actorRole = null, now = new Date().toISOString()) {
   if (input.role === 'owner' && actorRole !== 'owner') {
     throw new AppError(403, 'FORBIDDEN', 'Solo el propietario puede crear otro propietario.');
   }
-  const pin = validationPin(input.pin);
   const role = input.role;
+  const pin = validationPin(input.pin, role);
   const result = db
     .prepare(`
       INSERT INTO staff (name, role, pin_hash, active, created_at, updated_at)
@@ -333,13 +394,17 @@ export function updateStaff(db, id, input, actorId, actorRole = null, now = new 
     params.push(input.active ? 1 : 0);
   }
   if (input.pin !== undefined) {
+    const effectiveRole = input.role ?? existing.role;
     fields.push('pin_hash = ?');
-    params.push(hashPin(validationPin(input.pin)));
+    params.push(hashPin(validationPin(input.pin, effectiveRole)));
   }
   if (fields.length === 0) throw validationError('No hay cambios para guardar.');
   fields.push('updated_at = ?');
   params.push(now, id);
   db.prepare(`UPDATE staff SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  if (input.pin !== undefined) {
+    db.prepare('DELETE FROM sessions WHERE staff_id = ?').run(id);
+  }
   db.prepare(`
     INSERT INTO audit_logs (staff_id, action, entity_type, entity_id, details, created_at)
     VALUES (?, 'staff.update', 'staff', ?, ?, ?)

@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { calculateLineTotal, calculateTotals, calculateChange } from '@restpos/shared/pricing';
 import { businessDateFor } from './business-date.js';
 import { transaction } from './db.js';
-import { conflict, notFound, unprocessable, validationError } from './errors.js';
+import { AppError, conflict, notFound, unprocessable, validationError } from './errors.js';
 import { serializeOrder, serializePayment } from './serializers.js';
 import { resolveSelectedModifiers } from './modifiers.js';
 import { requireOpenShiftForPayment } from './shifts.js';
@@ -10,6 +10,8 @@ import { audit } from './audit.js';
 import { getSetting } from './settings.js';
 import { resolveActivePaymentMethod } from './payment-methods.js';
 import { consumeInventoryForOrder } from './inventory.js';
+
+const MAX_DISCOUNT_BPS = { server: 1000, cashier: 1000, manager: 2500, admin: 10000, owner: 10000 };
 
 const ORDER_SELECT = `
   SELECT o.*, t.name AS table_name, a.name AS area_name, a.id AS area_id
@@ -121,9 +123,34 @@ function parseAdjustments(raw, input) {
   return {
     discountType,
     discountValue: discountType === 'none' ? 0 : discountValue,
+    discountReason: discountType === 'none' ? '' : (input.discountReason ?? raw.discount_reason ?? ''),
     tipType,
     tipValue: tipType === 'none' ? 0 : tipValue,
   };
+}
+
+function assertDiscountAllowed(rawItems, adjustments, staffRole) {
+  if (adjustments.discountType === 'none' || adjustments.discountValue <= 0) {
+    return;
+  }
+  const reason = String(adjustments.discountReason ?? '').trim();
+  if (reason.length < 3) {
+    throw validationError('Indica el motivo del descuento.');
+  }
+  const maxBps = MAX_DISCOUNT_BPS[staffRole] ?? MAX_DISCOUNT_BPS.server;
+  const subtotalCents = rawItems.reduce(
+    (sum, item) => sum + Number(item.unitPriceCents) * Number(item.quantity),
+    0,
+  );
+  if (adjustments.discountType === 'percent' && adjustments.discountValue > maxBps) {
+    throw new AppError(403, 'DISCOUNT_LIMIT', `Tu rol permite un descuento máximo de ${maxBps / 100}%.`);
+  }
+  if (adjustments.discountType === 'fixed') {
+    const maxCents = Math.floor((subtotalCents * maxBps) / 10000);
+    if (adjustments.discountValue > maxCents) {
+      throw new AppError(403, 'DISCOUNT_LIMIT', `Tu rol permite un descuento máximo de ${maxBps / 100}% del subtotal.`);
+    }
+  }
 }
 
 function safeTotals(input) {
@@ -212,7 +239,7 @@ export function createOrder(db, config, input, { now = new Date(), staffId = nul
   return getOrder(db, orderId);
 }
 
-export function updateOrderDraft(db, config, id, input, { now = new Date(), staffId = null } = {}) {
+export function updateOrderDraft(db, config, id, input, { now = new Date(), staffId = null, staffRole = 'admin' } = {}) {
   const timestamp = now.toISOString();
 
   transaction(db, () => {
@@ -222,6 +249,9 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
     }
     if (Number(raw.amount_paid_cents || 0) > 0) {
       throw conflict('Este pedido tiene pagos registrados y ya no se puede modificar.');
+    }
+    if (input.delivery === true && raw.type !== 'llevar') {
+      throw validationError('Solo un pedido para llevar puede marcarse como delivery.');
     }
 
     const existingItems = loadItems(db, id);
@@ -265,19 +295,30 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
           }
         }
         const notes = line.notes ?? '';
-        const changed = Number(existing.quantity) !== line.quantity || existing.notes !== notes;
+        const notesChanged = existing.notes !== notes;
+        const storedSent = Number(existing.sent_quantity ?? 0);
+        const previousSent = existing.status === 'pending'
+          ? 0
+          : (storedSent > 0 ? storedSent : Number(existing.quantity));
+        const status = notesChanged ? 'pending' : existing.status;
+        const sentQuantity = notesChanged
+          ? 0
+          : Math.max(0, Math.min(previousSent, line.quantity));
         return {
           ...existing,
+          id: Number(existing.id),
+          isNew: false,
           clientKey: existing.client_key,
           productId: Number(existing.product_id),
           productName: existing.product_name,
           unitPriceCents: Number(existing.unit_price_cents),
           quantity: line.quantity,
           notes,
-          status: changed ? 'pending' : existing.status,
-          sent_at: changed ? null : existing.sent_at,
-          ready_at: changed ? null : existing.ready_at,
-          served_at: changed ? null : existing.served_at,
+          status,
+          sentQuantity,
+          sent_at: notesChanged ? null : existing.sent_at,
+          ready_at: notesChanged ? null : existing.ready_at,
+          served_at: notesChanged ? null : existing.served_at,
           course: line.course ?? existing.course,
           modifiers: existing.modifiers,
           modifiersTotalCents: Number(existing.modifiers_total_cents ?? 0),
@@ -300,6 +341,9 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       const unitPriceCents = Number(product.price_cents) + selection.modifiersTotalCents;
       return {
         ...line,
+        id: null,
+        isNew: true,
+        sentQuantity: 0,
         productId: Number(product.id),
         productName: product.name,
         unitPriceCents,
@@ -320,6 +364,11 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
     });
 
     const adjustments = parseAdjustments(raw, input);
+    assertDiscountAllowed(normalizedItems, adjustments, staffRole);
+    const delivery = raw.type === 'llevar'
+      ? (input.delivery !== undefined ? Boolean(input.delivery) : Boolean(raw.delivery))
+      : false;
+    const deliveryFeeCents = delivery ? Number(getSetting(db, 'delivery_fee_cents', '0')) : 0;
     const totals = safeTotals({
       items: normalizedItems,
       discountType: adjustments.discountType,
@@ -329,13 +378,26 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       taxRateBps: Number(raw.tax_rate_bps),
     });
 
-    db.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+    const keptIds = normalizedItems.filter((item) => !item.isNew).map((item) => item.id);
+    if (keptIds.length === 0) {
+      db.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+    } else {
+      db.prepare(`DELETE FROM order_items WHERE order_id = ? AND id NOT IN (${keptIds.map(() => '?').join(',')})`)
+        .run(id, ...keptIds);
+    }
+    const updateItem = db.prepare(`
+      UPDATE order_items SET
+        product_id = ?, product_name = ?, unit_price_cents = ?, quantity = ?, notes = ?,
+        line_total_cents = ?, status = ?, course = ?, sent_at = ?, ready_at = ?, served_at = ?,
+        modifiers_total_cents = ?, sort_order = ?, sent_quantity = ?
+      WHERE id = ? AND order_id = ?
+    `);
     const insertItem = db.prepare(`
       INSERT INTO order_items
         (order_id, client_key, product_id, product_name, unit_price_cents, quantity, notes,
          line_total_cents, status, course, sent_at, ready_at, served_at,
-         modifiers_total_cents, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         modifiers_total_cents, sort_order, sent_quantity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertModifier = db.prepare(`
       INSERT INTO order_item_modifiers
@@ -343,6 +405,27 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       VALUES (?, ?, ?, ?, ?)
     `);
     normalizedItems.forEach((item, index) => {
+      if (!item.isNew) {
+        updateItem.run(
+          item.productId,
+          item.productName,
+          item.unitPriceCents,
+          item.quantity,
+          item.notes,
+          item.lineTotalCents,
+          item.status,
+          item.course,
+          item.sent_at,
+          item.ready_at,
+          item.served_at,
+          item.modifiersTotalCents,
+          index,
+          item.sentQuantity,
+          item.id,
+          id,
+        );
+        return;
+      }
       const result = insertItem.run(
         id,
         item.clientKey,
@@ -359,6 +442,7 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
         item.served_at,
         item.modifiersTotalCents,
         index,
+        0,
       );
       const itemId = Number(result.lastInsertRowid);
       for (const modifier of item.modifiers) {
@@ -375,8 +459,8 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
     db.prepare(`
       UPDATE orders SET
         customer_name = ?, customer_phone = ?, notes = ?,
-        delivery = ?, delivery_address = ?, scheduled_for = ?,
-        subtotal_cents = ?, discount_type = ?, discount_value = ?, discount_cents = ?,
+        delivery = ?, delivery_address = ?, scheduled_for = ?, delivery_fee_cents = ?,
+        subtotal_cents = ?, discount_type = ?, discount_value = ?, discount_cents = ?, discount_reason = ?,
         tax_cents = ?, tip_type = ?, tip_value = ?, tip_cents = ?, total_cents = ?,
         updated_at = ?
       WHERE id = ?
@@ -384,24 +468,32 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       input.customerName !== undefined ? input.customerName : raw.customer_name,
       input.customerPhone !== undefined ? input.customerPhone : raw.customer_phone,
       input.notes !== undefined ? input.notes : raw.notes,
-      input.delivery !== undefined ? (input.delivery ? 1 : 0) : raw.delivery,
+      delivery ? 1 : 0,
       input.deliveryAddress !== undefined ? input.deliveryAddress : raw.delivery_address,
       input.scheduledFor !== undefined ? input.scheduledFor : raw.scheduled_for,
+      deliveryFeeCents,
       totals.subtotalCents,
       adjustments.discountType,
       adjustments.discountValue,
       totals.discountCents,
+      adjustments.discountReason,
       totals.taxCents,
       adjustments.tipType,
       adjustments.tipValue,
       totals.tipCents,
-      totals.totalCents + Number(raw.delivery_fee_cents || 0),
+      totals.totalCents + deliveryFeeCents,
       timestamp,
       id,
     );
     audit(db, staffId, 'order.update', 'order', id, {
       itemCount: normalizedItems.length,
-      totalCents: totals.totalCents + Number(raw.delivery_fee_cents || 0),
+      discountType: adjustments.discountType,
+      discountValue: adjustments.discountValue,
+      discountCents: totals.discountCents,
+      discountReason: adjustments.discountReason,
+      tipCents: totals.tipCents,
+      totalCents: totals.totalCents + deliveryFeeCents,
+      deliveryFeeCents,
     });
   });
 
@@ -410,24 +502,37 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
 
 export function sendOrderToKitchen(db, id, { now = new Date(), staffId = null } = {}) {
   const timestamp = now.toISOString();
+  let kitchenSnapshot = null;
   transaction(db, () => {
     const raw = loadRawOrder(db, id);
     if (raw.status !== 'abierta') throw conflict('Este pedido ya está cerrado.');
-    const pending = db
-      .prepare("SELECT * FROM order_items WHERE order_id = ? AND status = 'pending' ORDER BY sort_order, id")
+    kitchenSnapshot = getOrder(db, id);
+    const items = db
+      .prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order, id')
       .all(id);
+    const pending = items.filter((item) => {
+      const sent = item.status === 'pending' ? 0 : Number(item.sent_quantity ?? 0);
+      return item.status === 'pending' || sent < Number(item.quantity);
+    });
     if (pending.length === 0) {
       throw unprocessable('No hay productos nuevos por enviar a cocina.');
     }
-    db.prepare(`
-      UPDATE order_items SET status = 'sent', sent_at = ?
-      WHERE order_id = ? AND status = 'pending'
-    `).run(timestamp, id);
+    let itemCount = 0;
+    for (const item of pending) {
+      const sent = item.status === 'pending' ? 0 : Number(item.sent_quantity ?? 0);
+      const delta = item.status === 'pending' ? Number(item.quantity) : Number(item.quantity) - sent;
+      itemCount += delta;
+      db.prepare(`
+        UPDATE order_items SET status = 'sent', sent_quantity = ?, sent_at = ?,
+          ready_at = NULL, served_at = NULL
+        WHERE id = ?
+      `).run(Number(item.quantity), timestamp, item.id);
+    }
     db.prepare('UPDATE orders SET kitchen_sent_at = ?, updated_at = ? WHERE id = ?')
       .run(timestamp, timestamp, id);
-    audit(db, staffId, 'order.send_kitchen', 'order', id, { itemCount: pending.length });
+    audit(db, staffId, 'order.send_kitchen', 'order', id, { itemCount });
   });
-  return getOrder(db, id);
+  return { order: getOrder(db, id), kitchenSnapshot };
 }
 
 export function payOrder(db, config, id, input, { now = new Date(), staffId = null } = {}) {
@@ -567,10 +672,67 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       paymentMethodName: paymentMethod.name,
       newPaid,
       totalCents: totals.totalCents,
+      subtotalCents: totals.subtotalCents,
+      discountType: raw.discount_type,
+      discountValue: Number(raw.discount_value),
+      discountCents: totals.discountCents,
+      discountReason: raw.discount_reason ?? '',
+      tipCents: totals.tipCents,
       shiftId: shift?.id ?? null,
     });
   });
 
+  return getOrder(db, id);
+}
+
+export function closeCourtesyOrder(db, config, id, { reason, now = new Date(), staffId = null } = {}) {
+  const cleanReason = String(reason ?? '').trim();
+  if (cleanReason.length < 3) throw validationError('Indica el motivo de la cortesía.');
+  transaction(db, () => {
+    const raw = loadRawOrder(db, id);
+    if (raw.status !== 'abierta') throw conflict('Este pedido ya fue cerrado.', { status: raw.status });
+    if (Number(raw.amount_paid_cents || 0) > 0) {
+      throw conflict('Este pedido tiene pagos registrados; no se puede cerrar como cortesía.');
+    }
+    const items = loadItems(db, id);
+    if (items.length === 0) throw unprocessable('Agrega al menos un producto antes de cerrar la cortesía.');
+    const totals = safeTotals({
+      items: items.map((item) => ({ unitPriceCents: Number(item.unit_price_cents), quantity: Number(item.quantity) })),
+      discountType: raw.discount_type,
+      discountValue: Number(raw.discount_value),
+      tipType: raw.tip_type,
+      tipValue: Number(raw.tip_value),
+      taxRateBps: Number(raw.tax_rate_bps),
+    });
+    const totalCents = totals.totalCents + Number(raw.delivery_fee_cents || 0);
+    if (totalCents !== 0) {
+      throw conflict('La cortesía solo aplica cuando el total es cero. Aplica un descuento del 100%.');
+    }
+    const timestamp = now.toISOString();
+    db.prepare(`
+      UPDATE orders SET
+        status = 'pagada', amount_paid_cents = 0, subtotal_cents = ?, discount_cents = ?,
+        tax_cents = ?, tip_cents = ?, total_cents = 0,
+        payment_method = 'cortesia', payment_method_name = 'Cortesía',
+        paid_at = ?, closed_by_staff_id = ?, public_receipt_token = COALESCE(public_receipt_token, ?),
+        business_date = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      totals.subtotalCents, totals.discountCents, totals.taxCents, totals.tipCents,
+      timestamp, staffId, newReceiptToken(), businessDateFor(now, config.timezone), timestamp, id,
+    );
+    if (raw.table_id !== null) {
+      db.prepare("UPDATE restaurant_tables SET status = 'libre' WHERE id = ?").run(raw.table_id);
+    }
+    consumeInventoryForOrder(db, id, staffId, timestamp);
+    audit(db, staffId, 'order.courtesy', 'order', id, {
+      reason: cleanReason,
+      discountType: raw.discount_type,
+      discountValue: Number(raw.discount_value),
+      discountCents: totals.discountCents,
+      totalCents: 0,
+    });
+  });
   return getOrder(db, id);
 }
 

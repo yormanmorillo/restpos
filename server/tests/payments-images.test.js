@@ -134,10 +134,10 @@ describe('métodos de pago de Costa Rica', () => {
   });
 
   it('mantiene el último método activo y protege la administración por rol', async () => {
-    const staff = await ctx.agent.post('/api/staff').send({ name: 'Cajero QA', role: 'cashier', pin: '2468' });
+    const staff = await ctx.agent.post('/api/staff').send({ name: 'Cajero QA', role: 'cashier', pin: '246813' });
     expect(staff.status).toBe(201);
     const cashier = request.agent(ctx.app);
-    await cashier.post('/api/auth/login').send({ staffId: staff.body.staff.id, pin: '2468' });
+    await cashier.post('/api/auth/login').send({ staffId: staff.body.staff.id, pin: '246813' });
     const denied = await cashier.post('/api/payment-methods').send({
       code: 'prueba', name: 'Prueba', kind: 'other', allowsPhoto: false, active: true, sortOrder: 0,
     });
@@ -186,9 +186,9 @@ describe('fotos de productos y tipos de servicio', () => {
     const order = await openOrder(4);
     const sent = await ctx.agent.post(`/api/orders/${order.id}/send-kitchen`).send({});
     expect(sent.status).toBe(200);
-    const staff = await ctx.agent.post('/api/staff').send({ name: 'Caja Cocina', role: 'cashier', pin: '2468' });
+    const staff = await ctx.agent.post('/api/staff').send({ name: 'Caja Cocina', role: 'cashier', pin: '246813' });
     const cashier = request.agent(ctx.app);
-    await cashier.post('/api/auth/login').send({ staffId: staff.body.staff.id, pin: '2468' });
+    await cashier.post('/api/auth/login').send({ staffId: staff.body.staff.id, pin: '246813' });
     const tickets = await cashier.get('/api/kitchen/orders');
     expect(tickets.status).toBe(200);
     const itemId = tickets.body.tickets[0].items[0].id;

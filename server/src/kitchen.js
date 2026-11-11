@@ -60,6 +60,7 @@ export function getKitchenTickets(db) {
       status: item.status,
       course: Number(item.course),
       sentAt: item.sent_at,
+      sentQuantity: Number(item.sent_quantity ?? 0),
       readyAt: item.ready_at,
       modifiers: (item.modifiers ?? []).map((modifier) => ({
         name: modifier.modifier_name,

@@ -1,6 +1,6 @@
 import net from 'node:net';
 import { AppError, notFound, validationError } from './errors.js';
-import { getBooleanSetting, getSetting } from './settings.js';
+import { getBooleanSetting, getSetting, isAllowedPrinterHost } from './settings.js';
 
 const WIDTH = 42;
 const INIT = Buffer.from([0x1b, 0x40]);
@@ -75,7 +75,9 @@ export function buildKitchenTicket(order, { timeZone, width = WIDTH } = {}) {
   if (order.delivery && order.deliveryAddress) lines.push(`Direccion: ${order.deliveryAddress}`);
   lines.push(rule(width));
   for (const item of order.items.filter((entry) => ['sent', 'preparing'].includes(entry.status))) {
-    lines.push(`${item.quantity} x ${item.productName}`);
+    const sent = Number(item.sentQuantity ?? item.quantity);
+    const addition = sent > 0 && sent < Number(item.quantity) ? Number(item.quantity) - sent : 0;
+    lines.push(addition > 0 ? `+${addition} x ${item.productName} (adicional)` : `${item.quantity} x ${item.productName}`);
     for (const modifier of item.modifiers ?? []) {
       lines.push(`   + ${modifier.modifierName}`);
     }
@@ -86,12 +88,12 @@ export function buildKitchenTicket(order, { timeZone, width = WIDTH } = {}) {
   return ascii(lines.join('\n')) + '\n\n\n';
 }
 
-export function buildReceipt(order, { timeZone, width = WIDTH } = {}) {
+export function buildReceipt(order, { timeZone, width = WIDTH, restaurant = {} } = {}) {
   const lines = [];
-  lines.push('CASA ROBLE');
-  lines.push('Cocina de la casa');
-  lines.push('Av. Reforma 123, Centro, CDMX');
-  lines.push('Tel. 55 1234 5678');
+  lines.push(String(restaurant.name || 'RESTAURANTE').toUpperCase());
+  if (restaurant.tagline) lines.push(restaurant.tagline);
+  if (restaurant.address) for (const row of wrap(restaurant.address, width)) lines.push(row);
+  if (restaurant.phone) lines.push(`Tel. ${restaurant.phone}`);
   lines.push(rule(width));
   lines.push(line(`Ticket: ${order.orderNumber}`, order.businessDate ?? '', width));
   lines.push(line(orderOrigin(order), timeLabel(order.paidAt ?? order.createdAt, timeZone), width));
@@ -100,9 +102,13 @@ export function buildReceipt(order, { timeZone, width = WIDTH } = {}) {
   if (order.delivery && order.deliveryAddress) lines.push(`Direccion: ${order.deliveryAddress}`);
   lines.push(rule(width));
   for (const item of order.items) {
-    lines.push(`${item.quantity} x ${item.productName}`);
-    for (const modifier of item.modifiers ?? []) lines.push(`   + ${modifier.modifierName}`);
-    if (item.notes) lines.push(`   ${item.notes}`);
+    for (const row of wrap(`${item.quantity} x ${item.productName}`, width)) lines.push(row);
+    for (const modifier of item.modifiers ?? []) {
+      for (const row of wrap(`+ ${modifier.modifierName}`, width - 3)) lines.push(`   ${row}`);
+    }
+    if (item.notes) {
+      for (const row of wrap(item.notes, width - 3)) lines.push(`   ${row}`);
+    }
     lines.push(line('', money(item.lineTotalCents), width));
   }
   lines.push(rule(width));
@@ -147,7 +153,7 @@ export function printerConfig(db, kind) {
   const host = getSetting(db, `${kind}_printer_host`, '').trim();
   const port = Number(getSetting(db, `${kind}_printer_port`, '9100'));
   if (!host) throw validationError(`Configura la impresora de ${kind === 'kitchen' ? 'cocina' : 'tickets'}.`);
-  if (host.length > 255 || !Number.isInteger(port) || port < 1 || port > 65535) {
+  if (host.length > 255 || !isAllowedPrinterHost(host) || !Number.isInteger(port) || port < 1 || port > 65535) {
     throw validationError('La configuración de la impresora no es válida.');
   }
   return { host, port };
@@ -173,7 +179,7 @@ export function sendToPrinter({ host, port, data, timeoutMs = 4000 }) {
     });
     socket.once('close', () => finish());
     socket.once('timeout', () => finish(new AppError(504, 'PRINTER_TIMEOUT', 'La impresora no respondió.')));
-    socket.once('error', (error) => finish(new AppError(502, 'PRINTER_ERROR', `No se pudo imprimir: ${error.message}`)));
+    socket.once('error', () => finish(new AppError(502, 'PRINTER_ERROR', 'No se pudo conectar con la impresora. Revisa la IP, el puerto y la red.')));
   });
 }
 
@@ -181,8 +187,14 @@ export function printOrder(db, order, kind, { timeZone } = {}) {
   if (!order) throw notFound('No se encontró el pedido.');
   const config = printerConfig(db, kind);
   const paperWidth = Number(getSetting(db, 'printer_paper_width_mm', '80')) === 58 ? 32 : 42;
+  const restaurant = {
+    name: getSetting(db, 'restaurant_name', 'Restaurante'),
+    tagline: getSetting(db, 'restaurant_tagline', ''),
+    address: getSetting(db, 'restaurant_address', ''),
+    phone: getSetting(db, 'restaurant_phone', ''),
+  };
   const text = kind === 'kitchen'
     ? buildKitchenTicket(order, { timeZone, width: paperWidth })
-    : buildReceipt(order, { timeZone, width: paperWidth });
+    : buildReceipt(order, { timeZone, width: paperWidth, restaurant });
   return sendToPrinter({ ...config, data: escposDocument(text) });
 }

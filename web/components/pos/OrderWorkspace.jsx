@@ -176,6 +176,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [kitchenNotice, setKitchenNotice] = useState('');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [courtesyOpen, setCourtesyOpen] = useState(false);
+  const [courtesyReason, setCourtesyReason] = useState('');
+  const [courtesyError, setCourtesyError] = useState('');
+  const [closingCourtesy, setClosingCourtesy] = useState(false);
 
   const allProducts = useMemo(
     () =>
@@ -200,11 +204,16 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   }, [allProducts, categoryId, search]);
 
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  const pendingCount = order.items.filter((item) => item.status === 'pending').reduce((sum, item) => sum + item.quantity, 0);
+  const pendingCount = order.items.reduce((sum, item) => {
+    const sent = item.status === 'pending' ? 0 : Number(item.sentQuantity ?? item.quantity);
+    return sum + (item.status === 'pending' ? item.quantity : Math.max(0, item.quantity - sent));
+  }, 0);
   const paidCents = Number(order.amountPaidCents ?? 0);
   const balanceCents = Math.max(0, Number(order.totalCents) - paidCents);
   const locked = paidCents > 0;
   const deliveryIncomplete = order.delivery && (!order.customerPhone?.trim() || !order.deliveryAddress?.trim());
+  const canCourtesy = ['owner', 'admin', 'manager'].includes(staff?.role);
+  const isCourtesy = order.totalCents === 0 && order.items.length > 0 && paidCents === 0;
   const cartTitle = order.type === 'mesa' ? order.tableName : order.delivery ? 'Delivery' : 'Para llevar';
 
   if (paidOrder) {
@@ -323,6 +332,27 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       applyServerOrder(updatedOrder);
     }
     return updatedOrder;
+  }
+
+  async function handleCourtesyClose() {
+    if (courtesyReason.trim().length < 3) {
+      setCourtesyError('Indica el motivo de la cortesía.');
+      return;
+    }
+    setClosingCourtesy(true);
+    setCourtesyError('');
+    try {
+      await flush();
+      const response = await api.closeCourtesy(order.id, { reason: courtesyReason.trim() });
+      setPaidOrder(response.order);
+      setCourtesyOpen(false);
+      setPaymentOpen(false);
+      setCartOpen(false);
+    } catch (error) {
+      setCourtesyError(error.message || 'No se pudo cerrar la cortesía.');
+    } finally {
+      setClosingCourtesy(false);
+    }
   }
 
   async function handleCancelOrder() {
@@ -777,18 +807,34 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 Enviar a cocina · {pendingCount}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="btn btn-primary btn-charge"
-              onClick={() => {
-                setActionError('');
-                setPaymentOpen(true);
-              }}
-              disabled={order.items.length === 0 || leaving || deliveryIncomplete}
-            >
-              <Icon name="cash" size={22} />
-              {paidCents > 0 ? `Cobrar saldo ${formatMoney(balanceCents)}` : `Cobrar ${formatMoney(order.totalCents)}`}
-            </button>
+            {isCourtesy && canCourtesy ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-charge"
+                onClick={() => {
+                  setCourtesyError('');
+                  setCourtesyReason(order.discountReason ?? '');
+                  setCourtesyOpen(true);
+                }}
+                disabled={leaving}
+              >
+                <Icon name="gift" size={22} />
+                Cerrar cortesía · {formatMoney(0)}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary btn-charge"
+                onClick={() => {
+                  setActionError('');
+                  setPaymentOpen(true);
+                }}
+                disabled={order.items.length === 0 || leaving || deliveryIncomplete || order.totalCents === 0}
+              >
+                <Icon name="cash" size={22} />
+                {paidCents > 0 ? `Cobrar saldo ${formatMoney(balanceCents)}` : `Cobrar ${formatMoney(order.totalCents)}`}
+              </button>
+            )}
             <button type="button" className="text-button" onClick={() => void handleExit()} disabled={leaving || saving}>
               Guardar y volver a mesas
             </button>
@@ -816,11 +862,48 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         </span>
       </button>
 
+      <Modal
+        open={courtesyOpen}
+        onClose={() => setCourtesyOpen(false)}
+        title="Cerrar cortesía"
+        subtitle={`${order.orderNumber} · ${cartTitle}`}
+        size="sm"
+        closeDisabled={closingCourtesy}
+        footer={
+          <div className="modal-actions">
+            <span />
+            <div className="modal-actions-right">
+              <button type="button" className="btn btn-secondary" onClick={() => setCourtesyOpen(false)} disabled={closingCourtesy}>Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={() => void handleCourtesyClose()} disabled={closingCourtesy}>
+                {closingCourtesy ? <span className="spinner spinner-small" /> : <Icon name="gift" size={18} />}
+                Cerrar cortesía
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <p className="confirm-copy">El pedido se cerrará con total cero y quedará registrado en auditoría como cortesía. No se registrará un cobro.</p>
+        <label className="field">
+          <span className="field-label">Motivo de la cortesía</span>
+          <textarea
+            className="input"
+            rows={2}
+            maxLength={200}
+            value={courtesyReason}
+            onChange={(event) => { setCourtesyReason(event.target.value); setCourtesyError(''); }}
+            placeholder="Ej. cortesía autorizada por gerencia"
+            autoFocus
+          />
+        </label>
+        {courtesyError ? <p className="form-error">{courtesyError}</p> : null}
+      </Modal>
+
       <DiscountModal
         open={discountOpen}
         onClose={() => setDiscountOpen(false)}
         order={order}
         onApply={setDiscount}
+        staffRole={staff?.role}
       />
       <PaymentModal
         open={paymentOpen}

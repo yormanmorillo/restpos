@@ -6,12 +6,12 @@ Instancia operativa de Casa Roble POS sobre Dokploy, Docker y Traefik.
 
 | Servicio | URL |
 |---|---|
-| POS | <https://totem.lapizzeria.food> |
-| Pedidos en línea | <https://totem.lapizzeria.food/pedir> |
-| Cocina (KDS) | <https://totem.lapizzeria.food/cocina> |
-| Caja | <https://totem.lapizzeria.food/caja> |
-| API | <https://totem.lapizzeria.food/api/health> |
-| Panel Dokploy | <https://admin.lapizzeria.food> |
+| POS | <https://pos.example.com> |
+| Pedidos en línea | <https://pos.example.com/pedir> |
+| Cocina (KDS) | <https://pos.example.com/cocina> |
+| Caja | <https://pos.example.com/caja> |
+| API | <https://pos.example.com/api/health> |
+| Panel Dokploy | <https://panel.example.com> |
 
 ## Arquitectura
 
@@ -20,8 +20,8 @@ Internet
    │
    ▼
 Traefik (Docker, 80/443, Let's Encrypt)
-   ├── admin.lapizzeria.food → Dokploy :3000
-   └── totem.lapizzeria.food → web (Next.js :3000)
+   ├── panel.example.com → Dokploy :3000
+   └── pos.example.com → web (Next.js :3000)
                                   └── /api → api (Express :4000)
                                                    └── volumen restpos_data
                                                        /data/restpos.db
@@ -32,18 +32,18 @@ Traefik (Docker, 80/443, Let's Encrypt)
 - **Dokploy:** v0.31.0.
 - **Traefik:** v3.6.25.
 - **Proyecto Dokploy:** `RestPost`.
-- **Stack:** `restpos` (`appName: restpos-h7kjj3`), compose en modo `docker-compose`.
+- **Stack:** `restpos` (`appName: restpos-demo`), compose en modo `docker-compose`.
 - **Imágenes locales:** `restpos-api:latest` y `restpos-web:latest`.
 - **Persistencia:** volumen Docker `restpos_data`, montado en `/data`; SQLite en `/data/restpos.db` (WAL) y archivos en `/data/uploads` (fotos de productos y comprobantes de pago).
-- **Fuente para rebuild:** `/home/ubuntu/restpos-build`.
+- **Fuente para rebuild:** `/srv/restpos`.
 
 ## DNS
 
 Ambos registros apuntan al VPS:
 
 ```text
-totem.lapizzeria.food  A  40.160.39.1
-admin.lapizzeria.food  A  40.160.39.1
+pos.example.com  A  203.0.113.10
+panel.example.com  A  203.0.113.10
 ```
 
 Traefik gestiona y renueva los certificados de Let's Encrypt.
@@ -58,10 +58,10 @@ Traefik gestiona y renueva los certificados de Let's Encrypt.
 - Los PIN se guardan con `scrypt`; los tokens de sesión se guardan como hash SHA-256.
 - Hay límite de intentos por empleado y por IP.
 - El tráfico está cifrado con Let's Encrypt y HSTS. Se mantienen `X-Content-Type-Options`, `Referrer-Policy`, `frameDeny` y `contentTypeNosniff`.
-- El panel Dokploy solo se publica en `https://admin.lapizzeria.food`; el puerto 3000 está bloqueado desde Internet.
+- El panel Dokploy solo se publica en `https://panel.example.com`; el puerto 3000 está bloqueado desde Internet.
 - UFW permite únicamente `22`, `80` y `443`.
 - Docker puede saltarse UFW. La unidad `restpos-firewall.service` ejecuta `/usr/local/sbin/restpos-firewall`, que agrega una regla persistente en `DOCKER-USER` (IPv4 e IPv6) para bloquear el puerto 3000. La unidad se reinicia junto con Docker.
-- El password SSH sigue habilitado. Se recomienda configurar una clave propia y desactivar `PasswordAuthentication` una vez verificada.
+- La autenticación SSH por contraseña está deshabilitada. Usa únicamente llaves y restringe el acceso al panel por VPN o IP allowlist.
 - El panel de Dokploy equivale a acceso root al host (Docker socket). Usa una contraseña fuerte y no la compartas.
 
 ### Autenticación en Traefik
@@ -71,7 +71,7 @@ La versión 2 eliminó el Basic Auth compartido del dominio del POS. Ahora la au
 La configuración de Traefik debe conservar el middleware de seguridad:
 
 ```text
-traefik.http.routers.restpos-h7kjj3-1-websecure.middlewares=restpos-security@file
+traefik.http.routers.restpos-demo-1-websecure.middlewares=restpos-security@file
 ```
 
 No vuelvas a añadir `restpos-auth@file` al router del POS. El archivo dinámico `/etc/dokploy/traefik/dynamic/restpos-auth.yml` conserva `restpos-security`; las credenciales Basic Auth ya no se usan para el POS.
@@ -80,21 +80,27 @@ No vuelvas a añadir `restpos-auth@file` al router del POS. El archivo dinámico
 
 La base incluye menú, áreas, mesas y modificadores, pero **no incluye empleados**. La primera vez:
 
-1. Abre <https://totem.lapizzeria.food/login>.
+1. Abre <https://pos.example.com/login>.
 2. Verás **Crea tu administrador**.
-3. Captura nombre y un PIN de 6 a 8 dígitos (recomendado).
+3. Captura nombre y un PIN de 6 a 8 dígitos. Se rechazan PINs repetidos o secuenciales.
 4. Después podrás crear cajeros, meseros y cocina desde **Administración → Equipo**.
 
 No compartas la base sin antes revisar los empleados y PINs. Si se pierde el acceso, usa el procedimiento de recuperación.
 
 ### Crear la cuenta del propietario del software
 
+Define `PIN_SEGURO` con 6 a 8 dígitos no triviales:
+
+```bash
+export PIN_SEGURO='...'
+```
+
 El propietario (`owner`) tiene un panel propio en `/owner` para nombre del restaurante, métodos de pago, integraciones y accesos. Créalo desde consola:
 
 ```bash
-cd /home/ubuntu/restpos-build
-sudo docker compose -p restpos-h7kjj3 exec api \
-  node server/scripts/create-owner.js "MATMAX Admin" 123456
+cd /srv/restpos
+sudo docker compose -p restpos-demo exec api \
+  node server/scripts/create-owner.js "MATMAX Admin" "$PIN_SEGURO"
 ```
 
 El propietario aparece en el login como un empleado más. El gerente de tienda conserva el rol `admin`.
@@ -106,15 +112,15 @@ Para un propietario, usa el mismo comando `create-owner` con su nombre y un PIN 
 Con la app detenida o desde el contenedor del API:
 
 ```bash
-cd /home/ubuntu/restpos-build
-sudo docker compose -p restpos-h7kjj3 exec api \
-  node server/scripts/reset-admin-pin.js "Administrador" 123456
+cd /srv/restpos
+sudo docker compose -p restpos-demo exec api \
+  node server/scripts/reset-admin-pin.js "Administrador" "$PIN_SEGURO"
 ```
 
 Esto restablece el PIN, reactiva la cuenta, la deja como `admin` y elimina sus sesiones. En local:
 
 ```bash
-npm run admin:reset-pin -w server -- "Administrador" 123456
+npm run admin:reset-pin -w server -- "Administrador" "$PIN_SEGURO"
 ```
 
 ## Respaldos
@@ -144,8 +150,8 @@ sudo ls -lh /home/ubuntu/restpos-backups
 1. Detén el servicio desde Dokploy o con:
 
 ```bash
-cd /etc/dokploy/compose/restpos-h7kjj3/code
-sudo docker compose -p restpos-h7kjj3 --env-file .env stop api
+cd /etc/dokploy/compose/restpos-demo/code
+sudo docker compose -p restpos-demo --env-file .env stop api
 ```
 
 2. Copia el respaldo descomprimido al volumen:
@@ -185,15 +191,15 @@ rsync -az --delete \
   --exclude .next --exclude '**/.next' --exclude .git \
   --exclude .npm-cache --exclude .artifacts --exclude .deploy \
   --exclude 'server/data/*.db*' \
-  -e "ssh -i .deploy/restpos_deploy" \
-  ./ ubuntu@40.160.39.1:/home/ubuntu/restpos-build/
+  -e "ssh -i .deploy/deploy_key" \
+  ./ ubuntu@203.0.113.10:/srv/restpos/
 ```
 
 Reconstruye las imágenes en el VPS:
 
 ```bash
-ssh -i .deploy/restpos_deploy ubuntu@40.160.39.1
-cd /home/ubuntu/restpos-build
+ssh -i .deploy/deploy_key ubuntu@203.0.113.10
+cd /srv/restpos
 sudo docker build --target api -t restpos-api:latest .
 sudo docker build --target web -t restpos-web:latest .
 ```
@@ -203,8 +209,8 @@ El `Dockerfile` activa `NEXT_OUTPUT=standalone` solo en la etapa de build de la 
 Recrea los contenedores:
 
 ```bash
-cd /etc/dokploy/compose/restpos-h7kjj3/code
-sudo docker compose -p restpos-h7kjj3 --env-file .env up -d --force-recreate
+cd /etc/dokploy/compose/restpos-demo/code
+sudo docker compose -p restpos-demo --env-file .env up -d --force-recreate
 ```
 
 No uses `down -v` en producción: eliminaría el volumen de SQLite.
@@ -242,24 +248,31 @@ Antes de actualizar, ejecuta un respaldo manual. Después del arranque verifica 
 
 ```bash
 sudo docker ps
-sudo docker logs -f restpos-h7kjj3-web-1
-sudo docker logs -f restpos-h7kjj3-api-1
+sudo docker logs -f restpos-demo-web-1
+sudo docker logs -f restpos-demo-api-1
 sudo docker logs --tail 100 dokploy-traefik
 ```
 
 Los despliegues de Dokploy quedan en:
 
 ```text
-/etc/dokploy/logs/restpos-h7kjj3/
+/etc/dokploy/logs/restpos-demo/
 ```
 
 Comprobaciones rápidas:
 
 ```bash
-curl -fsS https://totem.lapizzeria.food/api/health
-curl -I https://totem.lapizzeria.food/
-curl -I https://totem.lapizzeria.food/pedir
+curl -fsS https://pos.example.com/api/health
+curl -I https://pos.example.com/
+curl -I https://pos.example.com/pedir
 ```
+
+## Endurecimiento
+
+- Configura `TRUST_PROXY_HOPS=1` cuando la API esté detrás de Traefik; no uses `trust proxy` abierto.
+- Define `SETUP_TOKEN` en despliegues nuevos. Sin ese token, el primer visitante podría reclamar la instalación.
+- Mantén el repositorio privado; no publiques IPs, dominios, llaves ni credenciales.
+- La autenticación SSH por contraseña está deshabilitada; usa llaves y restringe Dokploy por VPN/IP.
 
 ## Impresión térmica
 
@@ -302,6 +315,6 @@ Desde el cobro, el ticket o el historial se genera un enlace público `/r/<token
 - Las imágenes viven solo en el VPS. Si se destruye el servidor hay que reconstruirlas desde este repositorio.
 - SQLite es apropiado para una sola terminal o pocas terminales; no escales la API a varias réplicas.
 - No hay pasarela de pago: la terminal bancaria es externa.
-- No hay inventario ni recetas.
+- El inventario descuenta ingredientes solo para productos con receta configurada; revisa movimientos y ajusta conteos periódicamente.
 - No hay backup externo automático todavía.
 - Si cambia el volumen de ventas o se requieren varias cajas/sucursales, el siguiente paso es migrar a PostgreSQL y añadir sincronización en tiempo real.

@@ -137,11 +137,15 @@ export default function KitchenQueue({ compact = false, onOpenOrder = null, titl
                 <div className="kitchen-ticket-items">
                   {ticket.items.map((item) => {
                     const next = NEXT_ACTION[item.status];
+                    const addition = item.sentQuantity > 0 && item.sentQuantity < item.quantity
+                      ? item.quantity - item.sentQuantity
+                      : 0;
                     return (
                       <div key={item.id} className={`kitchen-line status-${item.status}`}>
-                        <span className="kitchen-line-qty">{item.quantity}</span>
+                        <span className="kitchen-line-qty">{addition > 0 ? `+${addition}` : item.quantity}</span>
                         <div>
                           <strong>{item.productName}</strong>
+                          {addition > 0 ? <small className="kitchen-line-addition">Adicional · {addition}</small> : null}
                           {item.modifiers.length > 0 ? <small>{item.modifiers.map((modifier) => modifier.name).join(' · ')}</small> : null}
                           {item.notes ? <small className="kitchen-line-note">{item.notes}</small> : null}
                         </div>

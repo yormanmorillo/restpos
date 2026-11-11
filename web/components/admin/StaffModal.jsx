@@ -34,8 +34,8 @@ export default function StaffModal({ open, person, onClose, onSubmit, allowOwner
     event.preventDefault();
     setError('');
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
-    if (!person && !/^\d{4,8}$/.test(pin)) { setError('El PIN debe tener entre 4 y 8 dígitos.'); return; }
-    if (pin && !/^\d{4,8}$/.test(pin)) { setError('El PIN debe tener entre 4 y 8 dígitos.'); return; }
+    if (!person && !/^\d{6,8}$/.test(pin)) { setError('El PIN debe tener entre 6 y 8 dígitos.'); return; }
+    if (pin && !/^\d{6,8}$/.test(pin)) { setError('El PIN debe tener entre 6 y 8 dígitos.'); return; }
     setBusy(true);
     try {
       const payload = { name: name.trim(), role, active, ...(pin ? { pin } : {}) };
@@ -88,7 +88,7 @@ export default function StaffModal({ open, person, onClose, onSubmit, allowOwner
             inputMode="numeric"
             value={pin}
             onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 8))}
-            placeholder={person ? 'Dejar en blanco para conservar' : '4 a 8 dígitos'}
+            placeholder={person ? 'Dejar en blanco para conservar' : '6 a 8 dígitos'}
           />
         </label>
         <label className="toggle-row field field-full">

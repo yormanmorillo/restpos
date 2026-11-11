@@ -16,6 +16,7 @@ export async function makeContext() {
     sessionTtlHours: 12,
     cookieSecure: false,
     uploadsPath: mkdtempSync(path.join(tmpdir(), 'restpos-test-uploads-')),
+    trustProxyHops: 1,
   };
   const db = openDatabase(':memory:');
   migrate(db);
@@ -35,8 +36,10 @@ export async function makeContext() {
   `).run(staffId, now);
   const app = createApp({ db, config });
   const agent = request.agent(app);
+  const testIp = `10.${Math.floor(Math.random() * 200) + 1}.${Math.floor(Math.random() * 200) + 1}.${Math.floor(Math.random() * 200) + 1}`;
   const login = await agent
     .post('/api/auth/login')
+    .set('X-Forwarded-For', testIp)
     .send({ staffId, pin: '1234' });
   if (login.status !== 200) {
     throw new Error(`No se pudo autenticar el contexto de pruebas: ${login.text}`);

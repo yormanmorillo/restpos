@@ -1,4 +1,5 @@
 import { parseMoneyToCents } from '@restpos/shared/money';
+import { MAX_PRICE_CENTS } from '@restpos/shared/pricing';
 import { transaction } from './db.js';
 import { audit } from './audit.js';
 import { validationError } from './errors.js';
@@ -66,13 +67,25 @@ export function importProducts(db, text, staffId, now = new Date().toISOString()
     const priceText = String(row.precio ?? row.price ?? '').trim();
     const sortOrder = Number(row.orden ?? row.sort_order ?? 0) || 0;
     if (!categoryName) { errors.push({ line, message: 'Falta la categoría.' }); return; }
+    if (categoryName.length > 60) { errors.push({ line, message: 'La categoría supera 60 caracteres.' }); return; }
     if (!name) { errors.push({ line, message: 'Falta el nombre del producto.' }); return; }
+    if (name.length > 100) { errors.push({ line, message: 'El nombre supera 100 caracteres.' }); return; }
+    if (description.length > 500) { errors.push({ line, message: 'La descripción supera 500 caracteres.' }); return; }
     if (!priceText) { errors.push({ line, message: 'Falta el precio.' }); return; }
+    if (!Number.isInteger(sortOrder) || sortOrder < -9999 || sortOrder > 9999) { errors.push({ line, message: 'El orden debe estar entre -9999 y 9999.' }); return; }
     let priceCents;
     try {
       priceCents = parseMoneyToCents(priceText);
     } catch {
       errors.push({ line, message: `Precio inválido: ${priceText}` });
+      return;
+    }
+    if (priceCents > MAX_PRICE_CENTS) {
+      errors.push({ line, message: `El precio no puede superar ${MAX_PRICE_CENTS / 100}.` });
+      return;
+    }
+    if (priceCents < 0) {
+      errors.push({ line, message: 'El precio no puede ser negativo.' });
       return;
     }
     valid.push({

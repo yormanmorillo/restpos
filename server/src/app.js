@@ -10,10 +10,10 @@ import {
   updateStaff,
   listStaff,
 } from './auth.js';
-import { getSettings, updateSettings } from './settings.js';
+import { getSettings, updateSettings, safeFeatures, filterSettingsForRole } from './settings.js';
 import { registerPublicRoutes } from './public.js';
 import { getCatalog } from './catalog.js';
-import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
+import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, closeCourtesyOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
 import { getDailyReport, dailyReportCsv } from './reports.js';
 import { getBooleanSetting, getSetting } from './settings.js';
 import { printOrder } from './printer.js';
@@ -37,6 +37,7 @@ import {
   createOrderSchema,
   draftSchema,
   payOrderSchema,
+  courtesySchema,
   orderListQuerySchema,
   dateQuerySchema,
   categoryCreateSchema,
@@ -113,7 +114,7 @@ function serializePaymentPhoto(photo) {
 export function createApp({ db, config }) {
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', true);
+  app.set('trust proxy', config.trustProxyHops ?? 0);
   app.use(express.json({ limit: '256kb', strict: true }));
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -147,7 +148,7 @@ export function createApp({ db, config }) {
   });
 
   api.get('/features', (req, res) => {
-    res.json({ features: getSettings(db) });
+    res.json({ features: safeFeatures(db) });
   });
 
   api.get('/catalog', (req, res) => {
@@ -189,12 +190,17 @@ export function createApp({ db, config }) {
   });
 
   api.get('/settings', requireRoles('owner', 'admin', 'manager'), (req, res) => {
-    res.json({ settings: getSettings(db) });
+    res.json({ settings: filterSettingsForRole(getSettings(db), req.staff.role) });
   });
 
   api.patch('/settings', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(settingsUpdateSchema, req.body);
-    res.json({ settings: updateSettings(db, input.settings) });
+    const printerNetworkKeys = Object.keys(input.settings).filter((key) => key.endsWith('_printer_host') || key.endsWith('_printer_port'));
+    if (printerNetworkKeys.length > 0 && req.staff.role !== 'owner') {
+      for (const key of printerNetworkKeys) delete input.settings[key];
+    }
+    const saved = Object.keys(input.settings).length > 0 ? updateSettings(db, input.settings) : getSettings(db);
+    res.json({ settings: filterSettingsForRole(saved, req.staff.role) });
   });
 
   api.get('/payment-methods', (req, res) => {
@@ -245,20 +251,28 @@ export function createApp({ db, config }) {
       throw validationError('Puedes adjuntar hasta 6 fotos por pago.');
     }
     const inserted = [];
+    const saved = [];
     const now = new Date().toISOString();
-    for (const file of req.files) {
-      const filename = saveImageFile(file, config.uploadsPath, 'payments');
-      const result = db.prepare(`
-        INSERT INTO payment_photos
-          (payment_id, filename, mime_type, size_bytes, uploaded_by_staff_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(paymentId, filename, file.mimetype, file.size, req.staff.id, now);
-      inserted.push(serializePaymentPhoto({
-        id: result.lastInsertRowid,
-        mime_type: file.mimetype,
-        size_bytes: file.size,
-        created_at: now,
-      }));
+    try {
+      for (const file of req.files) {
+        const filename = saveImageFile(file, config.uploadsPath, 'payments');
+        saved.push(filename);
+        const result = db.prepare(`
+          INSERT INTO payment_photos
+            (payment_id, filename, mime_type, size_bytes, uploaded_by_staff_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(paymentId, filename, file.mimetype, file.size, req.staff.id, now);
+        inserted.push(serializePaymentPhoto({
+          id: result.lastInsertRowid,
+          mime_type: file.mimetype,
+          size_bytes: file.size,
+          created_at: now,
+        }));
+      }
+    } catch (error) {
+      for (const photo of inserted) db.prepare('DELETE FROM payment_photos WHERE id = ?').run(photo.id);
+      for (const filename of saved) removeImageFile(config.uploadsPath, 'payments', filename);
+      throw error;
     }
     audit(db, req.staff.id, 'payment.photos.upload', 'payment', Number(paymentId), {
       orderId: Number(id),
@@ -370,13 +384,19 @@ export function createApp({ db, config }) {
   api.patch('/orders/:id/draft', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(draftSchema, req.body);
-    res.json({ order: updateOrderDraft(db, config, id, input, { staffId: req.staff.id }) });
+    res.json({ order: updateOrderDraft(db, config, id, input, { staffId: req.staff.id, staffRole: req.staff.role }) });
   });
 
   api.post('/orders/:id/pay', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(payOrderSchema, req.body);
     res.json({ order: payOrder(db, config, id, input, { staffId: req.staff.id }) });
+  });
+
+  api.post('/orders/:id/courtesy', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(courtesySchema, req.body);
+    res.json({ order: closeCourtesyOrder(db, config, id, { reason: input.reason, staffId: req.staff.id }) });
   });
 
   api.post('/orders/:id/cancel', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
@@ -386,11 +406,11 @@ export function createApp({ db, config }) {
 
   api.post('/orders/:id/send-kitchen', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), async (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
-    const order = sendOrderToKitchen(db, id, { staffId: req.staff.id });
+    const { order, kitchenSnapshot } = sendOrderToKitchen(db, id, { staffId: req.staff.id });
     let printWarning = null;
     if (getBooleanSetting(db, 'auto_print_kitchen', false) && getBooleanSetting(db, 'printer_enabled', false) && getSetting(db, 'printer_connection', 'network') === 'network') {
       try {
-        await printOrder(db, order, 'kitchen', { timeZone: config.timezone });
+        await printOrder(db, kitchenSnapshot ?? order, 'kitchen', { timeZone: config.timezone });
       } catch (error) {
         printWarning = error.message;
       }
@@ -551,8 +571,13 @@ export function createApp({ db, config }) {
     if (!existing) throw notFound('No se encontró el producto.');
     if (!req.file) throw validationError('Selecciona una imagen.');
     const filename = saveImageFile(req.file, config.uploadsPath, 'products');
-    db.prepare('UPDATE products SET image_path = ?, updated_at = ? WHERE id = ?')
-      .run(filename, new Date().toISOString(), id);
+    try {
+      db.prepare('UPDATE products SET image_path = ?, updated_at = ? WHERE id = ?')
+        .run(filename, new Date().toISOString(), id);
+    } catch (error) {
+      removeImageFile(config.uploadsPath, 'products', filename);
+      throw error;
+    }
     if (existing.image_path) removeImageFile(config.uploadsPath, 'products', existing.image_path);
     audit(db, req.staff.id, 'product.image.upload', 'product', Number(id), { filename });
     const updated = db

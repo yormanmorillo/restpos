@@ -91,6 +91,7 @@ export const api = {
   updateDraft: (id, body) => request(`/orders/${id}/draft`, { method: 'PATCH', body }),
   sendToKitchen: (id) => request(`/orders/${id}/send-kitchen`, { method: 'POST', body: {} }),
   payOrder: (id, body) => request(`/orders/${id}/pay`, { method: 'POST', body }),
+  closeCourtesy: (id, body) => request(`/orders/${id}/courtesy`, { method: 'POST', body }),
   cancelOrder: (id) => request(`/orders/${id}/cancel`, { method: 'POST', body: {} }),
   printOrder: (id, kind) => request(`/orders/${id}/print/${kind}`, { method: 'POST', body: {} }),
   getDailyReport: (date) => request(`/reports/daily${queryString({ date })}`),

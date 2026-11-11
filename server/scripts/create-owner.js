@@ -1,13 +1,15 @@
 import { loadConfig } from '../src/config.js';
 import { openDatabase, migrate } from '../src/db.js';
-import { hashPin } from '../src/auth.js';
+import { hashPin, assertPinStrength } from '../src/auth.js';
 
 const name = (process.argv[2] || 'Propietario').trim();
 const pin = String(process.argv[3] || '').trim();
 
-if (!/^\d{4,8}$/.test(pin)) {
-  console.error('Uso: npm run owner:create -w server -- "Nombre" 123456');
-  console.error('El PIN debe tener entre 4 y 8 dígitos.');
+try {
+  assertPinStrength(pin);
+} catch (error) {
+  console.error(`Uso: npm run owner:create -w server -- "Nombre" "PIN_DE_6_A_8_DIGITOS"`);
+  console.error(error.message);
   process.exit(1);
 }
 if (!name || name.length > 80) {

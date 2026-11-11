@@ -8,6 +8,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "4000"
+      TRUST_PROXY_HOPS: "1"
       DATABASE_PATH: /data/restpos.db
       APP_TIMEZONE: America/Mexico_City
       TAX_RATE_BPS: "1600"
