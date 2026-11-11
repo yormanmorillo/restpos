@@ -508,7 +508,8 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
             </button>
           </div>
 
-          <div className="ticket-head">
+          <div className="ticket-scroll">
+            <div className="ticket-head">
             <div>
               <span className="eyebrow">Cuenta abierta</span>
               <div className="ticket-title-row">
@@ -764,6 +765,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
               <p>{kitchenNotice}</p>
             </div>
           ) : null}
+          </div>
 
           <div className="ticket-actions">
             {deliveryIncomplete ? (

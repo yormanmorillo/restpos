@@ -5312,11 +5312,11 @@ h1 { font-weight: 700; }
 .home-view .takeaway-section {
   display: flex;
   min-height: 0;
-  flex: 1;
+  flex: 0 0 auto;
   flex-direction: column;
   margin-top: 0;
 }
-.home-view .takeaway-grid { min-height: 0; flex: 1; overflow-y: auto; gap: 6px; }
+.home-view .takeaway-grid { min-height: 0; max-height: min(28vh, 260px); overflow-y: auto; gap: 6px; }
 .home-view .takeaway-card { min-height: 48px; padding: 7px 10px; gap: 9px; border-radius: 10px; }
 .home-view .takeaway-icon { width: 31px; height: 31px; border-radius: 8px; }
 .home-view .takeaway-icon svg { width: 17px; height: 17px; }
@@ -5615,4 +5615,29 @@ h1 { font-weight: 700; }
 @media (max-width: 620px) {
   .brand-mark { width: 58px; height: 34px; padding: 3px; }
   .login-logo { width: 108px; height: 58px; padding: 7px; }
+}
+
+
+/* El cuerpo del ticket hace scroll; las acciones quedan siempre visibles */
+.ticket-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.ticket-scroll .ticket-items {
+  min-height: 0;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.ticket-actions { flex: 0 0 auto; }
+@media (max-width: 980px), (max-height: 720px) {
+  .home-view .takeaway-grid { max-height: none; overflow: visible; }
+}
+
+@media (min-width: 1024px) {
+  /* Deja espacio para el topbar del pedido: las acciones del ticket siempre caben en pantalla */
+  .ticket-panel { max-height: calc(100dvh - var(--header-height) - 112px); }
 }
