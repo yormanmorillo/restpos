@@ -12,6 +12,7 @@ import PaymentModal from './PaymentModal';
 import ProductModifierModal from './ProductModifierModal';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useFeatures } from '@/components/FeatureProvider';
 
 function SaveIndicator({ status }) {
   const labels = {
@@ -35,6 +36,7 @@ function SaveIndicator({ status }) {
 }
 
 function PaymentSuccess({ order, onNewOrder }) {
+  const { enabled } = useFeatures();
   const [openingReceipt, setOpeningReceipt] = useState(false);
   const [printerMode, setPrinterMode] = useState({ enabled: false, connection: 'network' });
   useEffect(() => {
@@ -110,10 +112,12 @@ function PaymentSuccess({ order, onNewOrder }) {
         </div>
 
         <div className="success-actions">
-          <button type="button" className="btn btn-secondary btn-large" onClick={() => openReceipt(true)} disabled={openingReceipt}>
-            <Icon name="printer" size={21} />
-            Imprimir ticket
-          </button>
+          {enabled('browser_printing') ? (
+            <button type="button" className="btn btn-secondary btn-large" onClick={() => openReceipt(true)} disabled={openingReceipt}>
+              <Icon name="printer" size={21} />
+              Imprimir ticket
+            </button>
+          ) : null}
           {printerMode.enabled && printerMode.connection === 'network' ? (
             <button type="button" className="btn btn-secondary btn-large" onClick={async () => {
               setPrinting(true);
@@ -132,9 +136,11 @@ function PaymentSuccess({ order, onNewOrder }) {
         </div>
         {order.photoUploadError ? <p className="form-error">{order.photoUploadError}</p> : null}
         {printError ? <p className="form-error">{printError}</p> : null}
-        <button type="button" className="text-button" onClick={() => openReceipt(false)}>
-          Solo ver el ticket
-        </button>
+        {enabled('browser_printing') ? (
+          <button type="button" className="text-button" onClick={() => openReceipt(false)}>
+            Solo ver el ticket
+          </button>
+        ) : null}
       </div>
     </div>
   );

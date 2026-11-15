@@ -10,8 +10,10 @@ services:
       PORT: "4000"
       TRUST_PROXY_HOPS: "1"
       DATABASE_PATH: /data/restpos.db
-      APP_TIMEZONE: America/Mexico_City
-      TAX_RATE_BPS: "1600"
+      APP_TIMEZONE: America/Costa_Rica
+      APP_COUNTRY: CR
+      APP_CURRENCY: CRC
+      TAX_RATE_BPS: "1300"
       COOKIE_SECURE: "true"
       SESSION_TTL_HOURS: "12"
     volumes:

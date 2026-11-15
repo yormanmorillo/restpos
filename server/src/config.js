@@ -16,7 +16,7 @@ function readInteger(name, fallback, { min, max }) {
 }
 
 function readTimezone() {
-  const value = process.env.APP_TIMEZONE || 'America/Mexico_City';
+  const value = process.env.APP_TIMEZONE || 'America/Costa_Rica';
   try {
     new Intl.DateTimeFormat('es-MX', { timeZone: value }).format(new Date());
   } catch {
@@ -38,8 +38,9 @@ export function loadConfig(overrides = {}) {
     databasePath,
     uploadsPath,
     timezone: readTimezone(),
-    currency: 'MXN',
-    taxRateBps: readInteger('TAX_RATE_BPS', DEFAULT_TAX_RATE_BPS, { min: 0, max: 10000 }),
+    country: process.env.APP_COUNTRY || 'CR',
+    currency: process.env.APP_CURRENCY || 'CRC',
+    taxRateBps: readInteger('TAX_RATE_BPS', 1300, { min: 0, max: 10000 }),
     sessionTtlHours: readInteger('SESSION_TTL_HOURS', 12, { min: 1, max: 168 }),
     cookieSecure: process.env.COOKIE_SECURE === 'true',
     setupToken: process.env.SETUP_TOKEN || null,

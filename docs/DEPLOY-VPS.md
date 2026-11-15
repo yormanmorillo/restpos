@@ -135,7 +135,7 @@ Script instalado en el VPS:
 - Genera un respaldo `.db.gz` de SQLite y un `.tar.gz` del directorio `/data/uploads` (fotos de productos y comprobantes).
 - Guarda ambos en `/home/ubuntu/restpos-backups/`.
 - Conserva 14 días.
-- Cron diario a las **09:00 UTC** (03:00 en Ciudad de México).
+- Cron diario a las **09:00 UTC** (03:00 en Costa Rica).
 - Los respaldos son locales. Cópialos periódicamente a otro servidor o almacenamiento S3.
 
 Ejecutar uno manualmente:
@@ -223,8 +223,10 @@ El compose del stack del API debe incluir:
 NODE_ENV: production
 DATABASE_PATH: /data/restpos.db
 UPLOAD_DIR: /data/uploads
-APP_TIMEZONE: America/Mexico_City
-TAX_RATE_BPS: "1600"
+APP_TIMEZONE: America/Costa_Rica
+APP_COUNTRY: CR
+APP_CURRENCY: CRC
+TAX_RATE_BPS: "1300"
 COOKIE_SECURE: "true"
 SESSION_TTL_HOURS: "12"
 ```
@@ -232,6 +234,14 @@ SESSION_TTL_HOURS: "12"
 `UPLOAD_DIR` es opcional: por defecto se usa la carpeta `uploads` junto a la base de datos, que en el volumen es `/data/uploads`.
 
 El frontend necesita `API_URL=http://api:4000` y `PORT=3000`.
+
+## Funciones activables
+
+El super admin activa o desactiva módulos desde **Administración → Ajustes → Funciones activables**. Las banderas se guardan en `settings` con el prefijo `feature_`. Los módulos existentes nacen activos; las funciones futuras nacen apagadas. Si se apaga una función, su API devuelve 404 y la interfaz oculta el acceso.
+
+## Impresoras de red
+
+Además de bloquear loopback, link-local y metadatos, la impresora debe estar en **Hosts autorizados** (IPs o nombres separados por coma). Sin esa lista, una IP privada no puede imprimir.
 
 ## Migración de métodos de pago
 

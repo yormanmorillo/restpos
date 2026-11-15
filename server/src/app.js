@@ -74,6 +74,7 @@ import { listPaymentMethods, createPaymentMethod, updatePaymentMethod, findPayme
 import { listIntegrations, createIntegration, updateIntegration } from './integrations.js';
 import { listInventoryItems, createInventoryItem, updateInventoryItem, receiveInventory, adjustInventory, listInventoryMovements, listRecipes, saveRecipe } from './inventory.js';
 import { importProducts } from './product-import.js';
+import { requireFeature } from './features.js';
 import { serializeProduct } from './serializers.js';
 import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
 
@@ -195,9 +196,14 @@ export function createApp({ db, config }) {
 
   api.patch('/settings', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(settingsUpdateSchema, req.body);
-    const printerNetworkKeys = Object.keys(input.settings).filter((key) => key.endsWith('_printer_host') || key.endsWith('_printer_port'));
+    const printerNetworkKeys = Object.keys(input.settings).filter((key) => key.endsWith('_printer_host') || key.endsWith('_printer_port') || key === 'printer_allowed_hosts');
     if (printerNetworkKeys.length > 0 && req.staff.role !== 'owner') {
       for (const key of printerNetworkKeys) delete input.settings[key];
+    }
+    if (req.staff.role !== 'owner') {
+      for (const key of Object.keys(input.settings)) {
+        if (key.startsWith('feature_')) delete input.settings[key];
+      }
     }
     const saved = Object.keys(input.settings).length > 0 ? updateSettings(db, input.settings) : getSettings(db);
     res.json({ settings: filterSettingsForRole(saved, req.staff.role) });
@@ -291,59 +297,59 @@ export function createApp({ db, config }) {
     res.json({ success: true });
   });
 
-  api.get('/inventory/items', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.get('/inventory/items', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ items: listInventoryItems(db) });
   });
 
-  api.post('/inventory/items', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.post('/inventory/items', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const input = parseOrThrow(inventoryItemCreateSchema, req.body);
     res.status(201).json({ item: createInventoryItem(db, input, req.staff.id) });
   });
 
-  api.patch('/inventory/items/:id', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.patch('/inventory/items/:id', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(inventoryItemUpdateSchema, req.body);
     res.json({ item: updateInventoryItem(db, id, input, req.staff.id) });
   });
 
-  api.post('/inventory/items/:id/receipts', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.post('/inventory/items/:id/receipts', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(inventoryReceiptSchema, req.body);
     res.status(201).json(receiveInventory(db, id, input, req.staff.id));
   });
 
-  api.post('/inventory/items/:id/adjustments', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.post('/inventory/items/:id/adjustments', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(inventoryAdjustmentSchema, req.body);
     res.json({ item: adjustInventory(db, id, input, req.staff.id) });
   });
 
-  api.get('/inventory/movements', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.get('/inventory/movements', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const itemId = req.query.itemId ? Number(req.query.itemId) : null;
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
     res.json({ movements: listInventoryMovements(db, { itemId: Number.isInteger(itemId) && itemId > 0 ? itemId : null, limit }) });
   });
 
-  api.get('/inventory/recipes', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.get('/inventory/recipes', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ recipes: listRecipes(db) });
   });
 
-  api.put('/inventory/recipes/:productId', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+  api.put('/inventory/recipes/:productId', requireFeature(db, 'inventory'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id: productId } = parseOrThrow(idParamsSchema, { id: req.params.productId });
     const input = parseOrThrow(recipeSchema, req.body);
     res.json({ recipe: saveRecipe(db, productId, input.ingredients, req.staff.id) });
   });
 
-  api.get('/integrations', requireRoles('owner'), (req, res) => {
+  api.get('/integrations', requireFeature(db, 'integrations'), requireRoles('owner'), (req, res) => {
     res.json({ integrations: listIntegrations(db) });
   });
 
-  api.post('/integrations', requireRoles('owner'), (req, res) => {
+  api.post('/integrations', requireFeature(db, 'integrations'), requireRoles('owner'), (req, res) => {
     const input = parseOrThrow(integrationCreateSchema, req.body);
     res.status(201).json({ integration: createIntegration(db, input, req.staff.id) });
   });
 
-  api.patch('/integrations/:id', requireRoles('owner'), (req, res) => {
+  api.patch('/integrations/:id', requireFeature(db, 'integrations'), requireRoles('owner'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(integrationUpdateSchema, req.body);
     res.json({ integration: updateIntegration(db, id, input, req.staff.id) });
@@ -418,11 +424,13 @@ export function createApp({ db, config }) {
     res.json({ order, ...(printWarning ? { printWarning } : {}) });
   });
 
-  api.get('/orders/:id/share', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.get('/orders/:id/share', requireFeature(db, 'whatsapp_receipt'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const order = ensureReceiptToken(db, id);
     const restaurantName = getSetting(db, 'restaurant_name', 'Casa Roble');
-    const message = `${restaurantName} · Pedido ${order.orderNumber}\nTotal: $${(order.totalCents / 100).toFixed(2)}\nGracias por su visita.`;
+    const currency = getSetting(db, 'currency', 'CRC');
+    const symbol = currency === 'CRC' ? '₡' : '$';
+    const message = `${restaurantName} · Pedido ${order.orderNumber}\nTotal: ${symbol}${(order.totalCents / 100).toFixed(2)}\nGracias por su visita.`;
     res.json({ url: order.publicReceiptUrl, message, orderNumber: order.orderNumber });
   });
 
@@ -553,7 +561,7 @@ export function createApp({ db, config }) {
     res.json({ product: updateProduct(db, id, input) });
   });
 
-  api.post('/admin/products/import', requireRoles('owner', 'admin', 'manager'), csvUpload.single('file'), (req, res) => {
+  api.post('/admin/products/import', requireFeature(db, 'bulk_import'), requireRoles('owner', 'admin', 'manager'), csvUpload.single('file'), (req, res) => {
     if (!req.file) throw validationError('Selecciona un archivo CSV.');
     const text = req.file.buffer.toString('utf8');
     res.json({ result: importProducts(db, text, req.staff.id) });

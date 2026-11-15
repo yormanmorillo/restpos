@@ -19,8 +19,9 @@ function ascii(value) {
     .replace(/[^\x20-\x7E\n]/g, '');
 }
 
-function money(cents) {
-  return `$${(Number(cents) / 100).toFixed(2)}`;
+function money(cents, currency = 'CRC') {
+  const amount = (Number(cents) / 100).toFixed(2);
+  return currency === 'CRC' ? `CRC ${amount}` : `$${amount}`;
 }
 
 function wrap(text, width = WIDTH) {
@@ -88,7 +89,7 @@ export function buildKitchenTicket(order, { timeZone, width = WIDTH } = {}) {
   return ascii(lines.join('\n')) + '\n\n\n';
 }
 
-export function buildReceipt(order, { timeZone, width = WIDTH, restaurant = {} } = {}) {
+export function buildReceipt(order, { timeZone, width = WIDTH, restaurant = {}, currency = 'CRC' } = {}) {
   const lines = [];
   lines.push(String(restaurant.name || 'RESTAURANTE').toUpperCase());
   if (restaurant.tagline) lines.push(restaurant.tagline);
@@ -109,24 +110,24 @@ export function buildReceipt(order, { timeZone, width = WIDTH, restaurant = {} }
     if (item.notes) {
       for (const row of wrap(item.notes, width - 3)) lines.push(`   ${row}`);
     }
-    lines.push(line('', money(item.lineTotalCents), width));
+    lines.push(line('', money(item.lineTotalCents, currency), width));
   }
   lines.push(rule(width));
-  lines.push(line('Subtotal', money(order.subtotalCents), width));
-  if (order.discountCents > 0) lines.push(line('Descuento', `-${money(order.discountCents)}`, width));
-  lines.push(line(`Impuesto (${order.taxRateBps / 100}%)`, money(order.taxCents), width));
-  if (order.deliveryFeeCents > 0) lines.push(line('Entrega', money(order.deliveryFeeCents), width));
-  if (order.tipCents > 0) lines.push(line('Propina', money(order.tipCents), width));
-  lines.push(line('TOTAL', money(order.totalCents), width));
+  lines.push(line('Subtotal', money(order.subtotalCents, currency), width));
+  if (order.discountCents > 0) lines.push(line('Descuento', `-${money(order.discountCents, currency)}`, width));
+  lines.push(line(`Impuesto (${order.taxRateBps / 100}%)`, money(order.taxCents, currency), width));
+  if (order.deliveryFeeCents > 0) lines.push(line('Entrega', money(order.deliveryFeeCents, currency), width));
+  if (order.tipCents > 0) lines.push(line('Propina', money(order.tipCents, currency), width));
+  lines.push(line('TOTAL', money(order.totalCents, currency), width));
   lines.push(rule(width));
   const payments = order.payments ?? [];
   if (payments.length > 0) {
-    for (const payment of payments) lines.push(line(payment.paymentMethodName || payment.paymentMethod, money(payment.amountCents), width));
+    for (const payment of payments) lines.push(line(payment.paymentMethodName || payment.paymentMethod, money(payment.amountCents, currency), width));
     const cash = payments.reduce((sum, payment) => sum + (payment.cashReceivedCents ?? 0), 0);
     const change = payments.reduce((sum, payment) => sum + (payment.changeCents ?? 0), 0);
     if (cash > 0) {
-      lines.push(line('Efectivo recibido', money(cash), width));
-      lines.push(line('Cambio', money(change), width));
+      lines.push(line('Efectivo recibido', money(cash, currency), width));
+      lines.push(line('Cambio', money(change, currency), width));
     }
   }
   lines.push('');
@@ -153,7 +154,8 @@ export function printerConfig(db, kind) {
   const host = getSetting(db, `${kind}_printer_host`, '').trim();
   const port = Number(getSetting(db, `${kind}_printer_port`, '9100'));
   if (!host) throw validationError(`Configura la impresora de ${kind === 'kitchen' ? 'cocina' : 'tickets'}.`);
-  if (host.length > 255 || !isAllowedPrinterHost(host) || !Number.isInteger(port) || port < 1 || port > 65535) {
+  const allowedHosts = getSetting(db, 'printer_allowed_hosts', '');
+  if (host.length > 255 || !isAllowedPrinterHost(host, allowedHosts) || !Number.isInteger(port) || port < 1 || port > 65535) {
     throw validationError('La configuración de la impresora no es válida.');
   }
   return { host, port };
@@ -195,6 +197,6 @@ export function printOrder(db, order, kind, { timeZone } = {}) {
   };
   const text = kind === 'kitchen'
     ? buildKitchenTicket(order, { timeZone, width: paperWidth })
-    : buildReceipt(order, { timeZone, width: paperWidth, restaurant });
+    : buildReceipt(order, { timeZone, width: paperWidth, restaurant, currency: getSetting(db, 'currency', 'CRC') });
   return sendToPrinter({ ...config, data: escposDocument(text) });
 }

@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **74 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **78 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -170,14 +170,24 @@ npm run admin:reset-pin -w server -- "Administrador" "$PIN_SEGURO"
 
 Restablece el PIN, reactiva la cuenta, la deja como `admin` y cierra sus sesiones activas. En Docker se ejecuta dentro del contenedor del API.
 
+## Funciones activables
+
+El super admin puede activar o desactivar módulos desde **Administración → Ajustes → Funciones activables**. Los módulos existentes nacen activos; las funciones nuevas de las fases 1–3 nacen apagadas. Si una función está apagada, desaparece de la navegación y su API responde 404.
+
+## Costa Rica
+
+La configuración inicial usa `CRC`, IVA 13 %, zona `America/Costa_Rica` y locale `es-CR`. **Cambiar la moneda no convierte automáticamente los precios del menú**: revisa y ajusta los precios de productos antes de operar con colones.
+
 ## Configuración
 
 | Variable | Default | Descripción |
 |---|---|---|
 | `PORT` | `4000` | Puerto de la API. |
 | `DATABASE_PATH` | `server/data/restpos.db` | Ruta del archivo SQLite. |
-| `APP_TIMEZONE` | `America/Mexico_City` | Zona horaria del día de venta, reportes e impresión. |
-| `TAX_RATE_BPS` | `1600` | Impuesto en puntos base (1600 = 16%). |
+| `APP_TIMEZONE` | `America/Costa_Rica` | Zona horaria del día de venta, reportes e impresión. |
+| `APP_COUNTRY` | `CR` | País de operación. |
+| `APP_CURRENCY` | `CRC` | Moneda de visualización y tickets. |
+| `TAX_RATE_BPS` | `1300` | Impuesto en puntos base (1300 = 13%). |
 | `SESSION_TTL_HOURS` | `12` | Duración de la sesión de empleado. |
 | `COOKIE_SECURE` | `false` | Debe ser `true` en producción con HTTPS. |
 | `API_URL` | `http://127.0.0.1:4000` | Destino del proxy `/api` de Next.js. |

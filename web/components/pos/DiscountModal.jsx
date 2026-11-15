@@ -145,7 +145,7 @@ export default function DiscountModal({ open, onClose, order, onApply, staffRole
       <label className="field">
         <span className="field-label">Descuento ({label})</span>
         <div className="money-input-wrap">
-          <span className="money-prefix">{type === 'percent' ? '%' : '$'}</span>
+          <span className="money-prefix">{type === 'percent' ? '%' : '₡'}</span>
           <input
             className="input money-input"
             type="text"

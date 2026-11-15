@@ -161,7 +161,7 @@ export default function ModifierGroupModal({ open, group, onClose, onSubmit }) {
               <div key={index} className="option-editor-row">
                 <input className="input" value={option.name} onChange={(event) => updateOption(index, 'name', event.target.value)} placeholder={`Opción ${index + 1}`} maxLength={80} />
                 <div className="money-input-wrap">
-                  <span className="money-prefix">$</span>
+                  <span className="money-prefix">₡</span>
                   <input className="input money-input" value={option.price} onChange={(event) => updateOption(index, 'price', event.target.value)} inputMode="decimal" placeholder="0.00" />
                 </div>
                 <label className="toggle-row option-active">

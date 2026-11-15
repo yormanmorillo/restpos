@@ -62,7 +62,7 @@ export default function AppHeader() {
 
   const items = NAV_ITEMS.filter((item) => item.roles.includes(staff.role));
   const clock = now
-    ? `${new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: 'numeric', month: 'short' }).format(now)} · ${new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit' }).format(now)}`
+    ? `${new Intl.DateTimeFormat('es-CR', { weekday: 'short', day: 'numeric', month: 'short' }).format(now)} · ${new Intl.DateTimeFormat('es-CR', { hour: '2-digit', minute: '2-digit' }).format(now)}`
     : '';
 
   return (

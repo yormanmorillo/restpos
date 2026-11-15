@@ -372,7 +372,6 @@ export const paymentMethodCreateSchema = z.object({
   kind: z.enum(['cash', 'card', 'transfer', 'other']),
   icon: z.string().trim().max(30).optional().default('wallet'),
   allowsPhoto: z.boolean().optional().default(false),
-  requiresPhoto: z.boolean().optional().default(false),
   active: z.boolean().optional().default(true),
   sortOrder: z.number().int().min(0).max(9999).optional().default(0),
 });
@@ -386,7 +385,6 @@ export const paymentMethodUpdateSchema = z
     kind: z.enum(['cash', 'card', 'transfer', 'other']).optional(),
     icon: z.string().trim().max(30).optional(),
     allowsPhoto: z.boolean().optional(),
-    requiresPhoto: z.boolean().optional(),
     active: z.boolean().optional(),
     sortOrder: z.number().int().min(0).max(9999).optional(),
   })

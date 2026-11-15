@@ -3,10 +3,14 @@
 import { useState } from 'react';
 import Icon from './Icon';
 import { api } from '@/lib/api';
+import { useFeatures } from '@/components/FeatureProvider';
 
 export default function ShareWhatsAppButton({ orderId, compact = false, className = 'btn btn-secondary' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const { enabled } = useFeatures();
+
+  if (!enabled('whatsapp_receipt')) return null;
 
   async function share() {
     setBusy(true);

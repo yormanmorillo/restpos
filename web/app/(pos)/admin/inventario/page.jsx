@@ -5,6 +5,7 @@ import Icon from '@/components/Icon';
 import Modal from '@/components/Modal';
 import { api } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
+import { FeatureGate } from '@/components/FeatureProvider';
 
 const UNIT_OPTIONS = [['g', 'gramos'], ['ml', 'mililitros'], ['pz', 'piezas']];
 const UNIT_LABELS = { g: 'g', ml: 'ml', pz: 'pz' };
@@ -80,7 +81,7 @@ function ReceiveModal({ open, item, items, onClose, onSubmit }) {
       <form id="receive-form" className="form-grid" onSubmit={submit}>
         <label className="field field-full"><span className="field-label">Insumo</span><select className="input select" value={itemId} onChange={(e) => setItemId(e.target.value)}>{items.filter((entry) => entry.active).map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({UNIT_LABELS[entry.unit]})</option>)}</select></label>
         <label className="field"><span className="field-label">Cantidad que entra</span><input className="input" type="number" min="0.001" step="0.001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" autoFocus /></label>
-        <label className="field"><span className="field-label">Costo total <small className="field-hint">opcional</small></span><div className="money-input-wrap"><span className="money-prefix">$</span><input className="input money-input" type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></div></label>
+        <label className="field"><span className="field-label">Costo total <small className="field-hint">opcional</small></span><div className="money-input-wrap"><span className="money-prefix">₡</span><input className="input money-input" type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" /></div></label>
         <label className="field field-full"><span className="field-label">Referencia <small className="field-hint">factura, proveedor…</small></span><input className="input" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} /></label>
         <label className="field field-full"><span className="field-label">Notas</span><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} /></label>
         {selected ? <p className="field-hint field-full">Entrarán {quantity(Number(amount) || 0)} {UNIT_LABELS[selected.unit]} de {selected.name}.</p> : null}
@@ -187,7 +188,7 @@ function RecipeModal({ open, recipe, items, onClose, onSubmit }) {
   );
 }
 
-export default function InventoryPage() {
+function InventoryPageContent() {
   const [tab, setTab] = useState('stock');
   const [items, setItems] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -290,4 +291,8 @@ export default function InventoryPage() {
       {toast ? <div className={`toast toast-${toast.type}`}>{toast.message}</div> : null}
     </div>
   );
+}
+
+export default function InventoryPage() {
+  return <FeatureGate feature="inventory"><InventoryPageContent /></FeatureGate>;
 }

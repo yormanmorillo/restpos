@@ -273,7 +273,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
               <span className="field-hint">Saldo {formatMoney(balanceCents)}</span>
             </div>
             <div className="money-input-wrap money-input-large">
-              <span className="money-prefix">$</span>
+              <span className="money-prefix">₡</span>
               <input
                 className="input money-input"
                 type="text"
@@ -314,7 +314,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
                 ))}
               </div>
               <div className="money-input-wrap money-input-large">
-                <span className="money-prefix">$</span>
+                <span className="money-prefix">₡</span>
                 <input
                   className="input money-input"
                   type="text"
@@ -400,7 +400,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
                   <span className="field-label">Propina en monto</span>
                   <div className="inline-action">
                     <div className="money-input-wrap">
-                      <span className="money-prefix">$</span>
+                      <span className="money-prefix">₡</span>
                       <input
                         className="input money-input"
                         type="text"

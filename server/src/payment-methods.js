@@ -11,7 +11,6 @@ export function serializePaymentMethod(row) {
     kind: row.kind,
     icon: row.icon,
     allowsPhoto: Boolean(row.allows_photo),
-    requiresPhoto: Boolean(row.requires_photo),
     active: Boolean(row.active),
     sortOrder: Number(row.sort_order),
     usageCount: row.usage_count === undefined ? undefined : Number(row.usage_count),
@@ -51,11 +50,6 @@ function validateMethodInput(input, { partial = false } = {}) {
   if (!partial || input.kind !== undefined) {
     if (!KINDS.includes(input.kind)) throw validationError('Selecciona un tipo de método válido.');
   }
-  if (!partial || input.allowsPhoto !== undefined) {
-    if (input.requiresPhoto && input.allowsPhoto === false) {
-      throw validationError('Un método que exige foto debe permitir adjuntar fotos.');
-    }
-  }
 }
 
 export function createPaymentMethod(db, input, staffId, now = new Date().toISOString()) {
@@ -67,21 +61,16 @@ export function createPaymentMethod(db, input, staffId, now = new Date().toISOSt
     throw conflict('Ya existe un método de pago con ese código.');
   }
   const allowsPhoto = Boolean(input.allowsPhoto);
-  const requiresPhoto = Boolean(input.requiresPhoto);
-  if (requiresPhoto && !allowsPhoto) {
-    throw validationError('Un método que exige foto debe permitir adjuntar fotos.');
-  }
   const result = db.prepare(`
     INSERT INTO payment_methods
-      (code, name, kind, icon, allows_photo, requires_photo, active, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (code, name, kind, icon, allows_photo, active, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.code,
     input.name,
     input.kind,
     input.icon || 'wallet',
     allowsPhoto ? 1 : 0,
-    requiresPhoto ? 1 : 0,
     input.active === false ? 0 : 1,
     input.sortOrder ?? 0,
     now,
@@ -97,11 +86,6 @@ export function updatePaymentMethod(db, id, input, staffId, now = new Date().toI
   if (!existing) throw notFound('No se encontró el método de pago.');
   validateMethodInput(input, { partial: true });
 
-  const willAllow = input.allowsPhoto ?? Boolean(existing.allows_photo);
-  const willRequire = input.requiresPhoto ?? Boolean(existing.requires_photo);
-  if (willRequire && !willAllow) {
-    throw validationError('Un método que exige foto debe permitir adjuntar fotos.');
-  }
   if (input.active === false && existing.active) {
     const activeCount = Number(
       db.prepare('SELECT COUNT(*) AS count FROM payment_methods WHERE active = 1').get().count,
@@ -128,14 +112,13 @@ export function updatePaymentMethod(db, id, input, staffId, now = new Date().toI
     ['kind', 'kind'],
     ['icon', 'icon'],
     ['allowsPhoto', 'allows_photo'],
-    ['requiresPhoto', 'requires_photo'],
     ['active', 'active'],
     ['sortOrder', 'sort_order'],
   ];
   for (const [key, column] of mapping) {
     if (input[key] !== undefined) {
       fields.push(`${column} = ?`);
-      if (['allowsPhoto', 'requiresPhoto', 'active'].includes(key)) {
+      if (['allowsPhoto', 'active'].includes(key)) {
         params.push(input[key] ? 1 : 0);
       } else {
         params.push(input[key]);

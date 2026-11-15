@@ -265,7 +265,7 @@ export default function CashPage() {
         <div className="form-grid">
           <label className="field field-full">
             <span className="field-label">Fondo inicial en efectivo</span>
-            <div className="money-input-wrap"><span className="money-prefix">$</span><input className="input money-input" inputMode="decimal" value={openingInput} onChange={(event) => setOpeningInput(event.target.value)} /></div>
+            <div className="money-input-wrap"><span className="money-prefix">₡</span><input className="input money-input" inputMode="decimal" value={openingInput} onChange={(event) => setOpeningInput(event.target.value)} /></div>
           </label>
           <label className="field field-full">
             <span className="field-label">Notas <small className="field-hint">opcional</small></span>
@@ -291,7 +291,7 @@ export default function CashPage() {
         <div className="form-grid">
           <label className="field field-full">
             <span className="field-label">Efectivo contado</span>
-            <div className="money-input-wrap money-input-large"><span className="money-prefix">$</span><input className="input money-input" inputMode="decimal" value={countedInput} onChange={(event) => setCountedInput(event.target.value)} autoFocus /></div>
+            <div className="money-input-wrap money-input-large"><span className="money-prefix">₡</span><input className="input money-input" inputMode="decimal" value={countedInput} onChange={(event) => setCountedInput(event.target.value)} autoFocus /></div>
           </label>
           <label className="field field-full">
             <span className="field-label">Notas <small className="field-hint">opcional</small></span>

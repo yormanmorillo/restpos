@@ -127,7 +127,7 @@ describe('utilidades de dinero', () => {
   });
 
   it('formatea moneda y edición de precios', () => {
-    expect(formatMoney(21370)).toContain('213.70');
+    expect(formatMoney(21370)).toContain('213,70');
     expect(centsToInput(8900)).toBe('89.00');
   });
 });

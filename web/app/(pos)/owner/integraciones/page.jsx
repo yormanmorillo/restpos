@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import IntegrationModal from '@/components/owner/IntegrationModal';
 import { api } from '@/lib/api';
+import { FeatureGate } from '@/components/FeatureProvider';
 
 const CATEGORY_LABELS = { payment: 'Pagos', accounting: 'Contabilidad', delivery: 'Delivery', loyalty: 'Lealtad', other: 'Otra' };
 
-export default function IntegrationsPage() {
+function IntegrationsPageContent() {
   const [integrations, setIntegrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -80,4 +81,8 @@ export default function IntegrationsPage() {
       {toast ? <div className={`toast toast-${toast.type}`}>{toast.message}</div> : null}
     </div>
   );
+}
+
+export default function IntegrationsPage() {
+  return <FeatureGate feature="integrations"><IntegrationsPageContent /></FeatureGate>;
 }

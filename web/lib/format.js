@@ -17,7 +17,7 @@ export function paymentLabel(method) {
 
 export function formatTime(isoString, timeZone) {
   if (!isoString) return '';
-  return new Intl.DateTimeFormat('es-MX', {
+  return new Intl.DateTimeFormat('es-CR', {
     hour: '2-digit',
     minute: '2-digit',
     ...(timeZone ? { timeZone } : {}),
@@ -28,7 +28,7 @@ export function formatBusinessDate(isoDate) {
   if (!isoDate) return '';
   const [year, month, day] = isoDate.split('-').map(Number);
   if (!year || !month || !day) return isoDate;
-  return new Intl.DateTimeFormat('es-MX', {
+  return new Intl.DateTimeFormat('es-CR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

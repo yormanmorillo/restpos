@@ -44,7 +44,7 @@ function normalizeAmountSeparators(raw) {
   return raw;
 }
 
-export function formatMoney(cents, { currency = 'MXN', locale = 'es-MX' } = {}) {
+export function formatMoney(cents, { currency = 'CRC', locale = 'es-CR' } = {}) {
   assertInteger(cents, 'cents');
   return new Intl.NumberFormat(locale, {
     style: 'currency',
@@ -71,7 +71,7 @@ export function parseMoneyToCents(input, { allowZero = true } = {}) {
   if (typeof input !== 'string' && typeof input !== 'number') {
     throw new Error('El monto es obligatorio.');
   }
-  const raw = String(input).trim().replace(/\s/g, '').replace(/\$/g, '');
+  const raw = String(input).trim().replace(/\s/g, '').replace(/[$₡]/g, '');
   if (!raw) throw new Error('Usa un monto válido con hasta 2 decimales.');
   const normalized = normalizeAmountSeparators(raw);
   if (!normalized || !/^\d{1,9}(?:\.\d{0,2})?$/.test(normalized)) {

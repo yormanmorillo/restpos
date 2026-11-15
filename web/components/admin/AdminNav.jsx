@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Icon from '@/components/Icon';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useFeatures } from '@/components/FeatureProvider';
 
 const TABS = [
   { href: '/admin', label: 'Menú', icon: 'tag', exact: true },
   { href: '/admin/salon', label: 'Salón', icon: 'table' },
   { href: '/admin/modificadores', label: 'Modificadores', icon: 'sliders' },
-  { href: '/admin/inventario', label: 'Inventario', icon: 'box' },
+  { href: '/admin/inventario', label: 'Inventario', icon: 'box', feature: 'inventory' },
   { href: '/admin/pagos', label: 'Pagos', icon: 'card' },
   { href: '/admin/equipo', label: 'Equipo', icon: 'users', adminOnly: true },
   { href: '/admin/ajustes', label: 'Ajustes', icon: 'settings' },
@@ -18,7 +19,8 @@ const TABS = [
 export default function AdminNav() {
   const pathname = usePathname();
   const { staff } = useAuth();
-  const tabs = TABS.filter((tab) => !tab.adminOnly || ['owner', 'admin'].includes(staff?.role));
+  const { enabled } = useFeatures();
+  const tabs = TABS.filter((tab) => (!tab.adminOnly || ['owner', 'admin'].includes(staff?.role)) && (!tab.feature || enabled(tab.feature)));
   return (
     <nav className="admin-subnav" aria-label="Secciones de administración">
       {tabs.map((tab) => {

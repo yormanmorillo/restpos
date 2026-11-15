@@ -183,7 +183,7 @@ export default function ProductModal({ open, product, categories, onClose, onSub
         <label className="field">
           <span className="field-label">Precio</span>
           <div className="money-input-wrap">
-            <span className="money-prefix">$</span>
+            <span className="money-prefix">₡</span>
             <input
               id="product-price"
               name="price"

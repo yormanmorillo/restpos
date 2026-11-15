@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
+import { useFeatures } from '@/components/FeatureProvider';
 import {
   formatBusinessDate,
   formatMoney,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/format';
 
 export default function ReceiptPage() {
+  const { enabled } = useFeatures();
   const params = useParams();
   const id = params?.id;
   const [order, setOrder] = useState(null);
@@ -106,10 +108,12 @@ export default function ReceiptPage() {
               Térmica
             </button>
           ) : null}
-          <button type="button" className="btn btn-primary" onClick={() => window.print()}>
-            <Icon name="printer" size={19} />
-            Imprimir
-          </button>
+          {enabled('browser_printing') ? (
+            <button type="button" className="btn btn-primary" onClick={() => window.print()}>
+              <Icon name="printer" size={19} />
+              Imprimir
+            </button>
+          ) : null}
         </div>
       </div>
 

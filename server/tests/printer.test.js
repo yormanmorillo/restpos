@@ -49,7 +49,7 @@ describe('documentos ESC/POS', () => {
   });
 
   it('genera el ticket con entrega, pago y sin acentos problemáticos', () => {
-    const receipt = buildReceipt(order, { timeZone: 'America/Mexico_City' });
+    const receipt = buildReceipt(order, { timeZone: 'America/Mexico_City', currency: 'MXN' });
     expect(receipt).toContain('Cliente: Ana Perez');
     expect(receipt).toContain('Entrega');
     expect(receipt).toContain('$25.00');
@@ -57,5 +57,7 @@ describe('documentos ESC/POS', () => {
     expect(receipt).toContain('$266.28');
     expect(receipt).toContain('Efectivo recibido');
     expect(receipt).toContain('Cambio');
+    const crc = buildReceipt(order, { timeZone: 'America/Costa_Rica', currency: 'CRC' });
+    expect(crc).toContain('CRC 266.28');
   });
 });

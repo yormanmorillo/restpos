@@ -66,7 +66,6 @@ export default function PaymentMethodModal({ open, method, onClose, onSubmit }) 
         kind,
         icon,
         allowsPhoto,
-        requiresPhoto: false,
         active,
         sortOrder: Number(sortOrder) || 0,
       });

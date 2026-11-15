@@ -232,10 +232,10 @@ describe('entradas no confiables', () => {
     expect(blocked.status).toBe(422);
     const local = await owner.patch('/api/settings').send({ settings: { kitchen_printer_host: 'localhost' } });
     expect(local.status).toBe(422);
-    const allowed = await owner.patch('/api/settings').send({ settings: { kitchen_printer_host: '192.168.1.50' } });
+    const allowed = await owner.patch('/api/settings').send({ settings: { printer_allowed_hosts: '192.168.1.50', kitchen_printer_host: '192.168.1.50' } });
     expect(allowed.status).toBe(200);
     const manager = await createStaff('manager', '246813', 'Gerente Impresora');
-    const denied = await manager.agent.patch('/api/settings').send({ settings: { receipt_printer_host: '192.168.1.51' } });
+    const denied = await manager.agent.patch('/api/settings').send({ settings: { printer_allowed_hosts: '192.168.1.51', receipt_printer_host: '192.168.1.51' } });
     expect(denied.status).toBe(200);
     expect(ctx.db.prepare("SELECT value FROM settings WHERE key = 'receipt_printer_host'").get().value).toBe('');
   });

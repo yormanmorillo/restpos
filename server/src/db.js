@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { FEATURE_KEYS, FEATURES, featureSettingKey } from '@restpos/shared/features';
 
 const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS categories (
@@ -634,8 +635,11 @@ const SETTINGS_DEFAULTS = {
   kitchen_printer_port: '9100',
   receipt_printer_host: '',
   receipt_printer_port: '9100',
+  printer_allowed_hosts: '',
   auto_print_kitchen: 'false',
   require_shift: 'true',
+  currency: 'CRC',
+  ...Object.fromEntries(FEATURE_KEYS.map((key) => [featureSettingKey(key), FEATURES[key].defaultEnabled ? 'true' : 'false'])),
 };
 
 export function seedDatabase(db, { now = new Date().toISOString() } = {}) {
@@ -693,8 +697,8 @@ export function seedOperationalData(db, { now = new Date().toISOString() } = {})
     if (paymentMethodCount === 0) {
       const insertMethod = db.prepare(`
         INSERT INTO payment_methods
-          (code, name, kind, icon, allows_photo, requires_photo, active, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
+          (code, name, kind, icon, allows_photo, active, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
       `);
       for (const method of [
         ['efectivo', 'Efectivo', 'cash', 'cash', 0, 10],

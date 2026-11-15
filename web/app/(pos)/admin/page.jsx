@@ -7,6 +7,7 @@ import { formatMoney } from '@/lib/format';
 import ProductModal from '@/components/admin/ProductModal';
 import CategoryModal from '@/components/admin/CategoryModal';
 import BulkImportModal from '@/components/admin/BulkImportModal';
+import { FeatureGate } from '@/components/FeatureProvider';
 
 function StatusBadge({ active }) {
   return (
@@ -209,10 +210,12 @@ export default function AdminPage() {
           <p>Crea, edita y desactiva productos y categorías. Los cambios se reflejan en el punto de venta.</p>
         </div>
         <div className="heading-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => setImportOpen(true)}>
-            <Icon name="upload" size={19} />
-            Carga masiva
-          </button>
+          <FeatureGate feature="bulk_import">
+            <button type="button" className="btn btn-secondary" onClick={() => setImportOpen(true)}>
+              <Icon name="upload" size={19} />
+              Carga masiva
+            </button>
+          </FeatureGate>
           <button
             type="button"
             className="btn btn-secondary"

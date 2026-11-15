@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/auth/AuthProvider';
+import FeatureSettings from '@/components/admin/FeatureSettings';
 import { centsToInput, parseMoneyToCents } from '@restpos/shared/money';
 
 function Toggle({ checked, onChange, title, description, disabled = false }) {
@@ -19,6 +20,7 @@ function Toggle({ checked, onChange, title, description, disabled = false }) {
 export default function SettingsPage() {
   const { staff } = useAuth();
   const canConfigurePrinters = staff?.role === 'owner';
+  const isOwner = staff?.role === 'owner';
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -72,6 +74,7 @@ export default function SettingsPage() {
         printer_connection: settings.printer_connection || 'network',
         printer_paper_width_mm: String(settings.printer_paper_width_mm || '80'),
         ...(canConfigurePrinters ? {
+          printer_allowed_hosts: settings.printer_allowed_hosts ?? '',
           kitchen_printer_host: settings.kitchen_printer_host ?? '',
           kitchen_printer_port: String(settings.kitchen_printer_port || '9100'),
           receipt_printer_host: settings.receipt_printer_host ?? '',
@@ -152,7 +155,7 @@ export default function SettingsPage() {
             </div>
             <label className="field">
               <span className="field-label">Costo de entrega <small className="field-hint">opcional</small></span>
-              <div className="money-input-wrap"><span className="money-prefix">$</span><input className="input money-input" inputMode="decimal" value={settings.delivery_fee_display ?? '0.00'} onChange={(event) => update('delivery_fee_display', event.target.value)} /></div>
+              <div className="money-input-wrap"><span className="money-prefix">₡</span><input className="input money-input" inputMode="decimal" value={settings.delivery_fee_display ?? '0.00'} onChange={(event) => update('delivery_fee_display', event.target.value)} /></div>
             </label>
           </section>
 
@@ -193,10 +196,18 @@ export default function SettingsPage() {
                     </div>
                   ) : <p className="field-hint"><Icon name="lock" size={14} /> Solo el super admin puede cambiar la IP o el puerto.</p>}
                 </div>
+                {canConfigurePrinters ? (
+                  <label className="field">
+                    <span className="field-label">Hosts autorizados <small className="field-hint">separados por coma</small></span>
+                    <input className="input" value={settings.printer_allowed_hosts ?? ''} onChange={(event) => update('printer_allowed_hosts', event.target.value)} placeholder="192.168.1.50, 192.168.1.51, impresora.local" />
+                    <span className="field-hint">Solo estas IPs o nombres pueden recibir impresión.</span>
+                  </label>
+                ) : null}
                 <p className="field-hint"><Icon name="note" size={14} /> La impresión se envía directamente al puerto TCP de la impresora; no usa el diálogo del navegador.</p>
               </>
             )}
           </section>
+          {isOwner ? <FeatureSettings /> : null}
         </div>
       </div>
 
