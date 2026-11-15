@@ -101,6 +101,35 @@ export function registerPublicRoutes(router, db, config) {
     res.status(201).json({ table: { id: Number(table.id), name: table.name }, order: { id: order.id, orderNumber: order.orderNumber, totalCents: order.totalCents, status: order.status } });
   });
 
+  router.get('/public/checks/:token', (req, res) => {
+    const check = db.prepare('SELECT * FROM order_checks WHERE public_receipt_token = ?').get(req.params.token);
+    if (!check) throw notFound('No se encontró el ticket de la cuenta.');
+    const order = getOrder(db, Number(check.order_id));
+    const serialized = order.checks.find((entry) => Number(entry.id) === Number(check.id));
+    if (!serialized) throw notFound('No se encontró el ticket de la cuenta.');
+    res.json({
+      receipt: {
+        restaurantName: getSetting(db, 'restaurant_name', 'Casa Roble'),
+        orderNumber: order.orderNumber,
+        checkLabel: serialized.label,
+        customerName: order.customerName,
+        businessDate: order.businessDate,
+        paidAt: serialized.paidAt,
+        timezone: config.timezone,
+        currency: config.currency,
+        taxRateBps: order.taxRateBps,
+        items: serialized.lines,
+        subtotalCents: serialized.subtotalCents,
+        discountCents: serialized.discountCents,
+        taxCents: serialized.taxCents,
+        deliveryFeeCents: serialized.deliveryCents,
+        tipCents: serialized.tipCents,
+        totalCents: serialized.totalCents,
+        payments: serialized.payments,
+      },
+    });
+  });
+
   router.get('/public/restaurant', (req, res) => {
     const features = publicFeatures(db);
     if (!getBooleanSetting(db, 'online_ordering_enabled', false)) {

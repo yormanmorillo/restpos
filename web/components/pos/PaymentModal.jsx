@@ -28,11 +28,14 @@ function methodIcon(method) {
   return method?.icon || (method?.kind === 'cash' ? 'cash' : method?.kind === 'card' ? 'card' : 'wallet');
 }
 
-export default function PaymentModal({ open, onClose, order, split = null, onSetTip, onConfirm, onRefresh }) {
+export default function PaymentModal({ open, onClose, order, split = null, check = null, onSetTip, onConfirm, onRefresh }) {
   const { enabled } = useFeatures();
-  const paymentOrder = split
-    ? { ...order, items: split.items, totalCents: split.totalCents, amountPaidCents: split.amountPaidCents, payments: (order.payments ?? []).filter((payment) => Number(payment.splitId) === Number(split.id)) }
-    : order;
+  const target = check ?? split;
+  const paymentOrder = check
+    ? { ...order, items: check.lines, totalCents: check.totalCents, amountPaidCents: check.amountPaidCents, tipType: 'none', tipValue: 0, payments: (order.payments ?? []).filter((payment) => Number(payment.checkId) === Number(check.id)) }
+    : split
+      ? { ...order, items: split.items, totalCents: split.totalCents, amountPaidCents: split.amountPaidCents, payments: (order.payments ?? []).filter((payment) => Number(payment.splitId) === Number(split.id)) }
+      : order;
   const [methods, setMethods] = useState([]);
   const [methodsLoading, setMethodsLoading] = useState(false);
   const [methodsError, setMethodsError] = useState('');
@@ -126,7 +129,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
   const suggestions = useMemo(() => getSuggestedCashAmounts(amountCents ?? 0).slice(0, 5), [amountCents]);
   const activePercentTip = paymentOrder.tipType === 'percent' ? paymentOrder.tipValue : null;
   const payments = paymentOrder.payments ?? [];
-  const splitSubtotal = split ? split.items.reduce((sum, item) => sum + item.lineTotalCents, 0) : null;
+  const targetSubtotal = target ? (target.lines ?? target.items ?? []).reduce((sum, item) => sum + item.lineTotalCents, 0) : null;
 
   function useSplit(parts) {
     if (!Number.isInteger(parts) || parts < 2) return;
@@ -185,7 +188,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
         amountCents,
         ...(isCash ? { cashReceivedCents: receivedCents } : {}),
         photos: selectedMethod.allowsPhoto ? photoFiles : [],
-        ...(split ? { splitId: split.id } : {}),
+        ...(check ? { checkId: check.id } : split ? { splitId: split.id } : {}),
         ...(selectedMethod.code === 'gift_card' ? { giftCardCode: giftCardCode.trim() } : {}),
       });
       setPhotoFiles([]);
@@ -206,14 +209,14 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
     <Modal
       open={open}
       onClose={onClose}
-      title={split ? 'Cobrar parte' : paidCents > 0 ? 'Cobrar saldo' : 'Cobrar pedido'}
-      subtitle={split ? `${split.label} · ${order.orderNumber}` : `${serviceLabel(order)} · ${order.orderNumber}`}
+      title={target ? 'Cobrar cuenta' : paidCents > 0 ? 'Cobrar saldo' : 'Cobrar pedido'}
+      subtitle={target ? `${target.label} · ${order.orderNumber}` : `${serviceLabel(order)} · ${order.orderNumber}`}
       size="lg"
       closeDisabled={paying}
       footer={
         <div className="payment-footer">
           <div>
-            <span>{split ? 'Saldo de esta parte' : paidCents > 0 ? 'Saldo pendiente' : 'Total a cobrar'}</span>
+            <span>{target ? 'Saldo de esta cuenta' : paidCents > 0 ? 'Saldo pendiente' : 'Total a cobrar'}</span>
             <strong>{formatMoney(balanceCents)}</strong>
           </div>
           <button type="button" className="btn btn-primary btn-charge-confirm" onClick={() => void submit()} disabled={!canConfirm}>
@@ -397,7 +400,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
         </div>
 
         <aside className="payment-side">
-          {!split ? (
+          {!target ? (
           <section className="payment-section">
             <div className="payment-section-row">
               <h3>Propina</h3>
@@ -449,11 +452,11 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
           ) : null}
 
           <section className="payment-summary" aria-label="Resumen del cobro">
-            <div className="summary-row"><span>Subtotal</span><span>{formatMoney(split ? splitSubtotal : order.subtotalCents)}</span></div>
-            {!split && order.discountCents > 0 ? <div className="summary-row summary-discount"><span>Descuento</span><span>-{formatMoney(order.discountCents)}</span></div> : null}
-            <div className="summary-row"><span>Impuesto ({order.taxRateBps / 100}%)</span><span>{formatMoney(split ? Math.max(0, split.totalCents - splitSubtotal) : order.taxCents)}</span></div>
-            {!split && order.deliveryFeeCents > 0 ? <div className="summary-row"><span>Costo de entrega</span><span>{formatMoney(order.deliveryFeeCents)}</span></div> : null}
-            <div className="summary-row"><span>Propina</span><span>{formatMoney(split ? 0 : order.tipCents)}</span></div>
+            <div className="summary-row"><span>Subtotal</span><span>{formatMoney(target ? targetSubtotal : order.subtotalCents)}</span></div>
+            {(check ? check.discountCents : target ? 0 : order.discountCents) > 0 ? <div className="summary-row summary-discount"><span>Descuento</span><span>-{formatMoney(check ? check.discountCents : order.discountCents)}</span></div> : null}
+            <div className="summary-row"><span>Impuesto ({order.taxRateBps / 100}%)</span><span>{formatMoney(check ? check.taxCents : target ? Math.max(0, target.totalCents - targetSubtotal - (target.tipCents ?? 0)) : order.taxCents)}</span></div>
+            {(check ? check.deliveryCents : target ? 0 : order.deliveryFeeCents) > 0 ? <div className="summary-row"><span>Costo de entrega</span><span>{formatMoney(check ? check.deliveryCents : order.deliveryFeeCents)}</span></div> : null}
+            <div className="summary-row"><span>Propina</span><span>{formatMoney(check ? check.tipCents : target ? 0 : order.tipCents)}</span></div>
             <div className="summary-row summary-total"><span>Total</span><strong>{formatMoney(paymentOrder.totalCents)}</strong></div>
             {paidCents > 0 ? <div className="summary-row summary-balance"><span>Saldo</span><span>{formatMoney(balanceCents)}</span></div> : null}
           </section>

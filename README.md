@@ -26,7 +26,8 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - **Métodos de pago administrables**: efectivo, tarjeta, SINPE Móvil, transferencia y métodos personalizados; se pueden activar o desactivar.
 - **Comprobantes fotográficos** para SINPE Móvil y transferencias, guardados con el pago.
 - **Factura pública compartible y envío por WhatsApp** desde el cobro, el ticket y el historial.
-- Bloqueo de edición cuando existe un pago parcial.
+- Bloqueo de edición cuando existe un pago parcial o cuentas de facturación.
+- Permiso configurable para que los meseros cobren o solo tomen pedidos.
 - Cálculo de cambio y ticket imprimible de 80 mm.
 - Turnos de caja obligatorios para cobrar (configurable), fondo inicial, efectivo esperado, conteo y diferencia.
 
@@ -136,7 +137,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **110 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **123 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -176,7 +177,7 @@ El super admin puede activar o desactivar módulos desde **Administración → A
 
 ## Fase 1 (funciones activables)
 
-- **Dividir cuenta** por producto y persona/asiento, con cobro independiente de cada parte.
+- **Cuentas de facturación**: partes iguales, por persona, por platos y cantidades compartidas; cada cuenta tiene propina, pagos y ticket propios.
 - **Reembolsos totales y parciales** de pedidos pagados con motivo y PIN de gerente; revierte inventario en el reembolso total, ajusta reportes y efectivo esperado.
 - **Mover mesas, unir pedidos y transferir productos individuales**, conservando las líneas y liberando la mesa origen cuando queda vacía.
 - **Modo sin conexión (primera versión):** PWA, catálogo cacheado, cola local de ventas para llevar en efectivo y sincronización idempotente al reconectar. Limitaciones y diseño completo en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md).

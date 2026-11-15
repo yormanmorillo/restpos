@@ -15,6 +15,7 @@ import { getSettings, updateSettings, safeFeatures, filterSettingsForRole } from
 import { registerPublicRoutes } from './public.js';
 import { getCatalog } from './catalog.js';
 import { assertCanCharge } from './permissions.js';
+import { createChecks, createEqualChecks, moveCheckLine, mergeChecks, updateCheckTip, undoChecks, markCheckReceiptToken } from './checks.js';
 import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, closeCourtesyOrder, refundOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
 import { getDailyReport, dailyReportCsv } from './reports.js';
 import { getBooleanSetting, getSetting } from './settings.js';
@@ -43,6 +44,12 @@ import {
   courtesySchema,
   refundSchema,
   splitCreateSchema,
+  checkCreateSchema,
+  checkParamsSchema,
+  checkEqualSchema,
+  checkMoveLineSchema,
+  checkMergeSchema,
+  checkTipSchema,
   moveTableSchema,
   offlineSaleSchema,
   mergeOrderSchema,
@@ -528,6 +535,54 @@ export function createApp({ db, config }) {
     res.json({ order: payOrder(db, config, id, input, { staffId: req.staff.id }) });
   });
 
+  api.post('/orders/:id/checks/equal', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(checkEqualSchema, req.body);
+    createEqualChecks(db, id, input.count, req.staff.id);
+    res.status(201).json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/checks', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(checkCreateSchema, req.body);
+    createChecks(db, id, input.groups, req.staff.id);
+    res.status(201).json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/checks/merge', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(checkMergeSchema, req.body);
+    mergeChecks(db, id, input.sourceCheckId, input.targetCheckId, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/checks/:checkId/move-line', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id, checkId } = parseOrThrow(checkParamsSchema, req.params);
+    const input = parseOrThrow(checkMoveLineSchema, req.body);
+    moveCheckLine(db, id, { ...input, toCheckId: checkId }, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.patch('/orders/:id/checks/:checkId/tip', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id, checkId } = parseOrThrow(checkParamsSchema, req.params);
+    const input = parseOrThrow(checkTipSchema, req.body);
+    updateCheckTip(db, id, checkId, input, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/checks/:checkId/pay', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    assertCanCharge(db, req.staff);
+    const { id, checkId } = parseOrThrow(checkParamsSchema, req.params);
+    const input = parseOrThrow(payOrderSchema, req.body);
+    res.json({ order: payOrder(db, config, id, { ...input, checkId }, { staffId: req.staff.id }) });
+  });
+
+  api.delete('/orders/:id/checks', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    undoChecks(db, id, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
   api.delete('/orders/:id/splits', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     clearOrderSplits(db, id, req.staff.id);
@@ -614,6 +669,39 @@ export function createApp({ db, config }) {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     await printOrder(db, getOrder(db, id), 'kitchen', { timeZone: config.timezone });
     res.json({ success: true });
+  });
+
+  api.get('/orders/:id/checks/:checkId/share', requireFeature(db, 'whatsapp_receipt'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id, checkId } = parseOrThrow(checkParamsSchema, req.params);
+    const order = getOrder(db, id);
+    const check = order.checks.find((entry) => Number(entry.id) === Number(checkId));
+    if (!check) throw notFound('No se encontró la cuenta.');
+    const receiptToken = markCheckReceiptToken(db, check.id);
+    res.json({
+      url: `/r/check/${receiptToken}`,
+      message: `${getSetting(db, 'restaurant_name', 'Casa Roble')} · ${order.orderNumber} · ${check.label}\nTotal: ${check.totalCents / 100}`,
+    });
+  });
+
+  api.post('/orders/:id/checks/:checkId/print', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), async (req, res) => {
+    const { id, checkId } = parseOrThrow(checkParamsSchema, req.params);
+    const order = getOrder(db, id);
+    const check = order.checks.find((entry) => Number(entry.id) === Number(checkId));
+    if (!check) throw notFound('No se encontró la cuenta.');
+    const printable = {
+      ...order,
+      customerName: [order.customerName, check.label].filter(Boolean).join(' · '),
+      items: check.lines.map((line) => ({ ...line, modifiers: [] })),
+      subtotalCents: check.subtotalCents,
+      discountCents: check.discountCents,
+      taxCents: check.taxCents,
+      deliveryFeeCents: check.deliveryCents,
+      tipCents: check.tipCents,
+      totalCents: check.totalCents,
+      payments: check.payments,
+    };
+    await printOrder(db, printable, 'receipt', { timeZone: config.timezone });
+    res.json({ ok: true });
   });
 
   api.post('/orders/:id/print/receipt', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), async (req, res) => {

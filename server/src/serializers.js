@@ -67,6 +67,7 @@ export function serializePayment(row) {
     staffId: row.staff_id === null ? null : Number(row.staff_id),
     staffName: row.staff_name ?? null,
     splitId: row.split_id === null || row.split_id === undefined ? null : Number(row.split_id),
+    checkId: row.check_id === null || row.check_id === undefined ? null : Number(row.check_id),
     paymentMethod: row.payment_method,
     paymentMethodName: row.method_name || row.payment_method,
     paymentMethodKind: row.method_kind || 'other',

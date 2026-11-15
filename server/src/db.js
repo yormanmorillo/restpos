@@ -88,6 +88,9 @@ CREATE TABLE IF NOT EXISTS orders (
   tax_cents INTEGER NOT NULL DEFAULT 0 CHECK (tax_cents >= 0),
   tip_type TEXT NOT NULL DEFAULT 'none' CHECK (tip_type IN ('none', 'percent', 'fixed')),
   tip_value INTEGER NOT NULL DEFAULT 0 CHECK (tip_value >= 0),
+  precheck_tip_type TEXT,
+  precheck_tip_value INTEGER,
+  precheck_tip_cents INTEGER,
   tip_cents INTEGER NOT NULL DEFAULT 0 CHECK (tip_cents >= 0),
   total_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
   payment_method TEXT,
@@ -129,6 +132,39 @@ CREATE TABLE IF NOT EXISTS order_splits (
 );
 CREATE INDEX IF NOT EXISTS order_splits_order_idx ON order_splits(order_id);
 
+CREATE TABLE IF NOT EXISTS order_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'paid')),
+  tip_type TEXT NOT NULL DEFAULT 'none' CHECK (tip_type IN ('none', 'percent', 'fixed')),
+  tip_value INTEGER NOT NULL DEFAULT 0 CHECK (tip_value >= 0),
+  tip_cents INTEGER NOT NULL DEFAULT 0 CHECK (tip_cents >= 0),
+  subtotal_cents INTEGER NOT NULL DEFAULT 0 CHECK (subtotal_cents >= 0),
+  discount_cents INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
+  tax_cents INTEGER NOT NULL DEFAULT 0 CHECK (tax_cents >= 0),
+  delivery_cents INTEGER NOT NULL DEFAULT 0 CHECK (delivery_cents >= 0),
+  total_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
+  amount_paid_cents INTEGER NOT NULL DEFAULT 0 CHECK (amount_paid_cents >= 0),
+  legacy_split_id INTEGER UNIQUE,
+  public_receipt_token TEXT UNIQUE,
+  created_at TEXT NOT NULL,
+  paid_at TEXT,
+  created_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS order_checks_order_idx ON order_checks(order_id);
+
+CREATE TABLE IF NOT EXISTS order_check_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  check_id INTEGER NOT NULL REFERENCES order_checks(id) ON DELETE CASCADE,
+  order_item_id INTEGER NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+  quantity_milli INTEGER NOT NULL CHECK (quantity_milli > 0),
+  created_at TEXT NOT NULL,
+  UNIQUE (check_id, order_item_id)
+);
+CREATE INDEX IF NOT EXISTS order_check_lines_check_idx ON order_check_lines(check_id);
+CREATE INDEX IF NOT EXISTS order_check_lines_item_idx ON order_check_lines(order_item_id);
+
 CREATE TABLE IF NOT EXISTS order_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -143,7 +179,8 @@ CREATE TABLE IF NOT EXISTS order_items (
   sent_quantity INTEGER NOT NULL DEFAULT 0,
   station_id INTEGER REFERENCES kitchen_stations(id) ON DELETE SET NULL,
   prep_seconds INTEGER NOT NULL DEFAULT 0,
-  split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL
+  split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL,
+  check_id INTEGER REFERENCES order_checks(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS order_items_client_key_unique
@@ -266,6 +303,7 @@ CREATE TABLE IF NOT EXISTS payments (
   method_name TEXT NOT NULL DEFAULT '',
   method_kind TEXT NOT NULL DEFAULT 'other',
   split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL,
+  check_id INTEGER REFERENCES order_checks(id) ON DELETE SET NULL,
   gift_card_code TEXT,
   points_redeemed INTEGER NOT NULL DEFAULT 0,
   amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
@@ -649,6 +687,9 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'customer_id', 'INTEGER REFERENCES customers(id)');
   ensureColumn(db, 'orders', 'promotion_id', 'INTEGER REFERENCES promotions(id)');
   ensureColumn(db, 'orders', 'promotion_code', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'orders', 'precheck_tip_type', 'TEXT');
+  ensureColumn(db, 'orders', 'precheck_tip_value', 'INTEGER');
+  ensureColumn(db, 'orders', 'precheck_tip_cents', 'INTEGER');
   ensureColumn(db, 'orders', 'loyalty_points_earned', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'loyalty_points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'loyalty_awarded', 'INTEGER NOT NULL DEFAULT 0');
@@ -678,6 +719,8 @@ export function migrate(db) {
   ensureColumn(db, 'payments', 'split_id', 'INTEGER REFERENCES order_splits(id)');
   ensureColumn(db, 'payments', 'gift_card_code', 'TEXT');
   ensureColumn(db, 'payments', 'points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
+
+  migrateLegacySplits(db);
   ensureColumn(db, 'promotions', 'auto_apply', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'promotions', 'days_of_week', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'promotions', 'start_time', 'TEXT');
@@ -691,6 +734,8 @@ export function migrate(db) {
   ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'order_items', 'sent_quantity', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'order_items', 'split_id', 'INTEGER REFERENCES order_splits(id)');
+  ensureColumn(db, 'order_items', 'check_id', 'INTEGER REFERENCES order_checks(id)');
+  ensureColumn(db, 'payments', 'check_id', 'INTEGER REFERENCES order_checks(id)');
   ensureColumn(db, 'order_items', 'station_id', 'INTEGER REFERENCES kitchen_stations(id)');
   ensureColumn(db, 'order_items', 'prep_seconds', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'inventory_movements', 'order_id', 'INTEGER REFERENCES orders(id)');
@@ -1026,4 +1071,45 @@ export function ensureTableQrTokens(db) {
     update.run(randomBytes(16).toString('hex'), row.id);
   }
   return rows.length;
+}
+
+
+function migrateLegacySplits(db) {
+  const legacy = db.prepare(`
+    SELECT s.* FROM order_splits s
+    LEFT JOIN order_checks c ON c.legacy_split_id = s.id
+    WHERE c.id IS NULL
+    ORDER BY s.id
+  `).all();
+  if (legacy.length === 0) return;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const insertCheck = db.prepare(`
+      INSERT INTO order_checks
+        (order_id, label, status, subtotal_cents, total_cents, amount_paid_cents,
+         legacy_split_id, created_at, paid_at, created_by_staff_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertLine = db.prepare(`
+      INSERT OR IGNORE INTO order_check_lines (check_id, order_item_id, quantity_milli, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+    for (const split of legacy) {
+      const result = insertCheck.run(
+        split.order_id, split.label, split.status, split.total_cents, split.total_cents,
+        split.amount_paid_cents, split.id, split.created_at, split.paid_at, split.created_by_staff_id,
+      );
+      const checkId = Number(result.lastInsertRowid);
+      const items = db.prepare('SELECT id, quantity FROM order_items WHERE split_id = ? ORDER BY id').all(split.id);
+      for (const item of items) {
+        insertLine.run(checkId, item.id, Number(item.quantity) * 1000, split.created_at);
+        db.prepare('UPDATE order_items SET check_id = ? WHERE id = ?').run(checkId, item.id);
+      }
+      db.prepare('UPDATE payments SET check_id = ? WHERE split_id = ?').run(checkId, split.id);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }

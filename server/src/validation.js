@@ -255,6 +255,27 @@ export const mergeOrderSchema = z.object({
   sourceOrderId: z.number().int().positive('Selecciona un pedido válido.'),
 });
 
+export const checkParamsSchema = z.object({ id: z.coerce.number().int().positive(), checkId: z.coerce.number().int().positive() });
+
+export const checkCreateSchema = z.object({
+  groups: z.array(z.object({
+    label: text(40, 'La etiqueta').optional().default(''),
+    shares: z.array(z.object({
+      orderItemId: z.number().int().positive(),
+      quantityMilli: z.number().int().positive().max(99_000),
+    })).min(1).max(100),
+  })).min(2).max(20),
+});
+
+export const checkEqualSchema = z.object({ count: z.number().int().min(2).max(20) });
+export const checkMoveLineSchema = z.object({
+  fromCheckId: z.number().int().positive(),
+  orderItemId: z.number().int().positive(),
+  quantityMilli: z.number().int().positive().max(99_000).optional(),
+});
+export const checkMergeSchema = z.object({ sourceCheckId: z.number().int().positive(), targetCheckId: z.number().int().positive() });
+export const checkTipSchema = z.object({ tipType: z.enum(['none', 'percent', 'fixed']), tipValue: z.number().int().min(0) });
+
 export const splitCreateSchema = z.object({
   groups: z.array(z.object({
     label: text(40, 'La etiqueta de la parte').optional().default(''),
@@ -274,6 +295,7 @@ export const courtesySchema = z.object({
 
 export const payOrderSchema = z.object({
   splitId: z.number().int().positive('La parte de la cuenta no es válida.').optional(),
+  checkId: z.number().int().positive('La cuenta no es válida.').optional(),
   giftCardCode: z.string().trim().max(60).optional(),
   paymentMethod: z
     .string({ error: 'Selecciona un método de pago.' })

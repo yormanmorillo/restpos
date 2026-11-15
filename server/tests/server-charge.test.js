@@ -52,6 +52,21 @@ describe('permiso de cobro del mesero', () => {
     expect(order.body.order.payments).toHaveLength(0);
   });
 
+
+  it('el permiso también aplica al cobro de una cuenta dividida', async () => {
+    ctx.db.prepare("UPDATE settings SET value = 'true' WHERE key = 'feature_split_bill'").run();
+    await ctx.agent.patch('/api/settings').send({ settings: { server_can_charge: 'false' } });
+    const created = await serverAgent.post('/api/orders').send({ type: 'llevar' });
+    const id = created.body.order.id;
+    await serverAgent.patch(`/api/orders/${id}/draft`).send({ items: [line('line-sc-split', 1, 2)] });
+    const split = await serverAgent.post(`/api/orders/${id}/checks/equal`).send({ count: 2 });
+    expect(split.status).toBe(201);
+    const check = split.body.order.checks[0];
+    const blocked = await serverAgent.post(`/api/orders/${id}/checks/${check.id}/pay`).send({ paymentMethod: 'efectivo', cashReceivedCents: check.totalCents });
+    expect(blocked.status).toBe(403);
+    expect((await cashierAgent.get(`/api/orders/${id}`)).body.order.checks[0].amountPaidCents).toBe(0);
+  });
+
   it('cajero y gerente cobran con el ajuste inactivo', async () => {
     await ctx.agent.patch('/api/settings').send({ settings: { server_can_charge: 'false' } });
     for (const [agent, key] of [[cashierAgent, 'line-sc-03'], [managerAgent, 'line-sc-04']]) {

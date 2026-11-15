@@ -15,6 +15,7 @@ import { awardLoyaltyForOrder, reverseLoyaltyForOrder } from './customers.js';
 import { findActiveHappyHour } from './promotions.js';
 import { redeemGiftCard } from './gift-cards.js';
 import { listOrderSplits } from './splits.js';
+import { listOrderChecks, markCheckReceiptToken } from './checks.js';
 
 const MAX_DISCOUNT_BPS = { server: 1000, cashier: 1000, manager: 2500, admin: 10000, owner: 10000 };
 
@@ -108,6 +109,7 @@ export function getOrder(db, id) {
   const order = serializeOrder(row, loadItems(db, id));
   order.payments = loadPayments(db, id).map(serializePayment);
   order.splits = listOrderSplits(db, id);
+  order.checks = listOrderChecks(db, id);
   if (order.customerId) {
     const customer = db.prepare('SELECT id, name, phone, points_balance FROM customers WHERE id = ?').get(order.customerId);
     order.customer = customer ? { id: Number(customer.id), name: customer.name, phone: customer.phone, pointsBalance: Number(customer.points_balance) } : null;
@@ -274,6 +276,9 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
     }
     if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
       throw conflict('No se puede modificar un pedido con la cuenta dividida.');
+    }
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_checks WHERE order_id = ?').get(id).count > 0) {
+      throw conflict('No se puede modificar un pedido con cuentas de facturación.');
     }
 
     const existingItems = loadItems(db, id);
@@ -629,10 +634,18 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     }
     const shift = requireOpenShiftForPayment(db);
     const alreadyPaid = Number(raw.amount_paid_cents || 0);
+    const checks = db.prepare('SELECT * FROM order_checks WHERE order_id = ? ORDER BY id').all(id);
     const splits = db.prepare('SELECT * FROM order_splits WHERE order_id = ? ORDER BY id').all(id);
     let split = null;
+    let check = null;
     let balance;
-    if (splits.length > 0) {
+    if (checks.length > 0) {
+      if (!input.checkId) throw conflict('Selecciona la cuenta que vas a cobrar.');
+      check = checks.find((entry) => Number(entry.id) === Number(input.checkId));
+      if (!check) throw notFound('No se encontró esa cuenta.');
+      if (check.status === 'paid') throw conflict('Esta cuenta ya fue pagada.');
+      balance = Number(check.total_cents) - Number(check.amount_paid_cents);
+    } else if (splits.length > 0) {
       if (!input.splitId) throw conflict('Selecciona la parte de la cuenta que vas a cobrar.');
       split = splits.find((entry) => Number(entry.id) === Number(input.splitId));
       if (!split) throw notFound('No se encontró esa parte de la cuenta.');
@@ -684,9 +697,9 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     }
     db.prepare(`
       INSERT INTO payments
-        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id, gift_card_code, points_redeemed,
+        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id, check_id, gift_card_code, points_redeemed,
          amount_cents, cash_received_cents, change_cents, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       shift?.id ?? null,
@@ -695,6 +708,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       paymentMethod.name,
       paymentMethod.kind,
       split?.id ?? null,
+      check?.id ?? null,
       giftCardCode,
       pointsRedeemed,
       amountCents,
@@ -704,17 +718,27 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     );
 
     const newPaid = alreadyPaid + amountCents;
-    if (split) {
+    if (check) {
+      const checkPaid = Number(check.amount_paid_cents) + amountCents;
+      db.prepare("UPDATE order_checks SET amount_paid_cents = ?, status = ?, paid_at = ? WHERE id = ?")
+        .run(checkPaid, checkPaid >= Number(check.total_cents) ? 'paid' : 'open', checkPaid >= Number(check.total_cents) ? timestamp : null, check.id);
+      if (checkPaid >= Number(check.total_cents)) markCheckReceiptToken(db, check.id, timestamp);
+    } else if (split) {
       const splitPaid = Number(split.amount_paid_cents) + amountCents;
       db.prepare("UPDATE order_splits SET amount_paid_cents = ?, status = ?, paid_at = ? WHERE id = ?")
         .run(splitPaid, splitPaid >= Number(split.total_cents) ? 'paid' : 'open', splitPaid >= Number(split.total_cents) ? timestamp : null, split.id);
     }
+    const openChecks = checks.length > 0
+      ? db.prepare("SELECT COUNT(*) AS count FROM order_checks WHERE order_id = ? AND status = 'open'").get(id).count
+      : 0;
     const openSplits = splits.length > 0
       ? db.prepare("SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ? AND status = 'open'").get(id).count
       : 0;
-    const closesOrder = splits.length > 0
-      ? Number(openSplits) === 0 && newPaid >= totals.totalCents
-      : newPaid >= totals.totalCents;
+    const closesOrder = checks.length > 0
+      ? Number(openChecks) === 0
+      : splits.length > 0
+        ? Number(openSplits) === 0 && newPaid >= totals.totalCents
+        : newPaid >= totals.totalCents;
     const cashTotals = db.prepare(`
       SELECT COALESCE(SUM(cash_received_cents), 0) AS cash_received,
              COALESCE(SUM(change_cents), 0) AS change_total
@@ -783,6 +807,8 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       tipCents: totals.tipCents,
       shiftId: shift?.id ?? null,
       splitId: split?.id ?? null,
+      checkId: check?.id ?? null,
+      checkLabel: check?.label ?? null,
     });
   });
 
@@ -800,6 +826,9 @@ export function closeCourtesyOrder(db, config, id, { reason, now = new Date(), s
     }
     if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
       throw conflict('Cierra las partes de la cuenta antes de registrar una cortesía.');
+    }
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_checks WHERE order_id = ?').get(id).count > 0) {
+      throw conflict('Cierra las cuentas antes de registrar una cortesía.');
     }
     const items = loadItems(db, id);
     if (items.length === 0) throw unprocessable('Agrega al menos un producto antes de cerrar la cortesía.');
@@ -924,6 +953,16 @@ export function cancelOrder(db, id, { now = new Date(), staffId = null } = {}) {
     }
     if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
       throw conflict('No se puede anular un pedido con la cuenta dividida.');
+    }
+    const checks = db.prepare('SELECT * FROM order_checks WHERE order_id = ?').all(id);
+    if (checks.some((check) => check.status === 'paid' || Number(check.amount_paid_cents) > 0)) {
+      throw conflict('No se puede anular un pedido con cuentas pagadas.');
+    }
+    if (checks.length > 0) {
+      db.prepare('UPDATE order_items SET check_id = NULL WHERE order_id = ?').run(id);
+      db.prepare('DELETE FROM order_check_lines WHERE check_id IN (SELECT id FROM order_checks WHERE order_id = ?)').run(id);
+      db.prepare('DELETE FROM order_checks WHERE order_id = ?').run(id);
+      db.prepare('UPDATE orders SET precheck_tip_type = NULL, precheck_tip_value = NULL, precheck_tip_cents = NULL WHERE id = ?').run(id);
     }
     const timestamp = now.toISOString();
     db.prepare(`

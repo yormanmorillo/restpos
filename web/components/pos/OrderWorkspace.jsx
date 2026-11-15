@@ -3,14 +3,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import Icon from '@/components/Icon';
 import Modal from '@/components/Modal';
-import { formatPercentBps } from '@restpos/shared/money';
+import { centsToInput, formatPercentBps, parseMoneyToCents } from '@restpos/shared/money';
 import { api } from '@/lib/api';
 import { formatMoney, paymentLabel, productQtyInOrder, serviceLabel, serviceShortLabel } from '@/lib/format';
 import { useDraftOrder } from '@/lib/useDraftOrder';
 import DiscountModal from './DiscountModal';
 import PaymentModal from './PaymentModal';
 import ProductModifierModal from './ProductModifierModal';
-import SplitBillModal from './SplitBillModal';
+import CheckSplitModal from './CheckSplitModal';
+import CheckToolsModal from './CheckToolsModal';
 import TableOpsModal from './TableOpsModal';
 import CustomerPickerModal from './CustomerPickerModal';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
@@ -194,6 +195,12 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const canCharge = staff?.role !== 'server' || serverCanCharge;
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitTarget, setSplitTarget] = useState(null);
+  const [checkTarget, setCheckTarget] = useState(null);
+  const [tipCheck, setTipCheck] = useState(null);
+  const [tipType, setTipType] = useState('none');
+  const [tipValue, setTipValue] = useState('0');
+  const [tipBusy, setTipBusy] = useState(false);
+  const [checkToolsOpen, setCheckToolsOpen] = useState(false);
   const [splitNotice, setSplitNotice] = useState('');
   const [tableOpsOpen, setTableOpsOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
@@ -357,18 +364,68 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
     }
   }
 
-  async function handleSplitSave(groups) {
+  async function handleEqualChecks(count) {
     await flush();
-    const response = await api.splitOrder(order.id, { groups });
+    const response = await api.createEqualChecks(order.id, count);
     applyServerOrder(response.order);
-    setSplitNotice('Cuenta dividida. Cobra cada parte por separado.');
+    setSplitNotice(`Cuenta dividida en ${count} partes.`);
     return response;
   }
 
-  async function handlePaymentConfirm(payload) {
-    const { photos = [], splitId = null, ...payment } = payload;
+  async function handleCheckGroups(groups) {
     await flush();
-    let response = await api.payOrder(order.id, { ...payment, ...(splitId ? { splitId } : {}) });
+    const response = await api.createChecks(order.id, groups);
+    applyServerOrder(response.order);
+    setSplitNotice('Cuentas creadas. Cobra cada una por separado.');
+    return response;
+  }
+
+  async function handleMoveCheckLine(payload) {
+    const response = await api.moveCheckLine(order.id, payload.toCheckId, { fromCheckId: payload.fromCheckId, orderItemId: payload.orderItemId, quantityMilli: payload.quantityMilli });
+    applyServerOrder(response.order);
+    setSplitNotice('Línea movida a otra cuenta.');
+  }
+
+  async function handleMergeChecks(payload) {
+    const response = await api.mergeChecks(order.id, payload);
+    applyServerOrder(response.order);
+    setSplitNotice('Cuentas fusionadas.');
+  }
+
+  async function handleUndoChecks() {
+    try {
+      const response = await api.undoChecks(order.id);
+      applyServerOrder(response.order);
+      setSplitNotice('División deshecha.');
+    } catch (error) { setActionError(error.message || 'No se pudo deshacer la división.'); }
+  }
+
+  function openTipEditor(check) {
+    setTipCheck(check);
+    setTipType(check.tipType || 'none');
+    setTipValue(check.tipType === 'percent' ? String((check.tipValue || 0) / 100) : centsToInput(check.tipValue || 0));
+  }
+
+  async function saveCheckTip() {
+    if (!tipCheck) return;
+    setTipBusy(true);
+    try {
+      let value = 0;
+      if (tipType === 'percent') value = Math.round((Number(tipValue) || 0) * 100);
+      if (tipType === 'fixed') value = parseMoneyToCents(tipValue);
+      const response = await api.updateCheckTip(order.id, tipCheck.id, { tipType, tipValue: value });
+      applyServerOrder(response.order);
+      setTipCheck(null);
+    } catch (error) { setActionError(error.message || 'No se pudo guardar la propina.'); }
+    finally { setTipBusy(false); }
+  }
+
+  async function handlePaymentConfirm(payload) {
+    const { photos = [], splitId = null, checkId = null, ...payment } = payload;
+    await flush();
+    let response = checkId
+      ? await api.payCheck(order.id, checkId, payment)
+      : await api.payOrder(order.id, { ...payment, ...(splitId ? { splitId } : {}) });
     let photoUploadError = '';
     if (photos.length > 0) {
       const paymentId = response.order.payments?.at(-1)?.id;
@@ -388,10 +445,11 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       setCartOpen(false);
     } else {
       applyServerOrder(updatedOrder);
-      if (splitId) {
+      if (splitId || checkId) {
         setPaymentOpen(false);
         setSplitTarget(null);
-        setSplitNotice('Parte cobrada. Continúa con la siguiente.');
+        setCheckTarget(null);
+        setSplitNotice(checkId ? 'Cuenta cobrada. Continúa con la siguiente.' : 'Parte cobrada. Continúa con la siguiente.');
       }
     }
     return updatedOrder;
@@ -809,22 +867,33 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
             )}
           </div>
 
-          {order.splits?.length > 0 ? (
-            <div className="split-summary">
-              <div className="split-summary-head"><strong>Cuenta dividida</strong><span>{order.splits.filter((split) => split.status === 'paid').length} / {order.splits.length} pagadas</span></div>
-              {paidCents === 0 ? <button type="button" className="text-button split-undo" onClick={() => void handleClearSplits()}>Deshacer división</button> : null}
-              {order.splits.map((split, index) => (
-                <div key={split.id} className={`split-row ${split.status === 'paid' ? 'is-paid' : ''}`}>
-                  <div><strong>{split.label || `Parte ${index + 1}`}</strong><span>{split.items.length} producto(s) · {formatMoney(split.totalCents)}</span></div>
-                  {split.status === 'paid' ? (
-                    <span className="item-status is-served">Pagada</span>
-                  ) : canCharge ? (
-                    <button type="button" className="btn btn-small btn-secondary" onClick={() => { setSplitTarget(split); setPaymentOpen(true); }} disabled={leaving || split.status === 'paid'}>
-                      Cobrar {formatMoney(split.balanceCents)}
-                    </button>
-                  ) : <span className="field-hint">Cobra caja</span>}
-                </div>
-              ))}
+          {order.checks?.length > 0 ? (
+            <div className="checks-summary">
+              <div className="split-summary-head"><strong>Cuentas</strong><span>{order.checks.filter((check) => check.status === 'paid').length} de {order.checks.length} pagadas</span></div>
+              <div className="check-summary-actions">{paidCents === 0 ? <button type="button" className="text-button split-undo" onClick={() => void handleUndoChecks()}>Deshacer división</button> : null}{order.checks.filter((check) => check.status !== 'paid').length > 1 ? <button type="button" className="text-button" onClick={() => setCheckToolsOpen(true)}>Mover / fusionar</button> : null}</div>
+              <div className="check-cards">
+                {order.checks.map((check) => (
+                  <div key={check.id} className={`check-card ${check.status === 'paid' ? 'is-paid' : ''}`}>
+                    <div className="check-card-head"><strong>{check.label}</strong><span>{check.status === 'paid' ? 'Pagada' : formatMoney(check.balanceCents)}</span></div>
+                    <div className="check-card-items">
+                      {check.lines.map((line) => <div key={line.id} className="check-card-line"><span>{line.quantity} × {line.productName}</span><span>{formatMoney(line.lineTotalCents)}</span></div>)}
+                    </div>
+                    <div className="check-card-totals"><span>Propina {formatMoney(check.tipCents)}</span><strong>Total {formatMoney(check.totalCents)}</strong></div>
+                    {check.status === 'paid' ? (
+                      <div className="check-card-actions">
+                        <span className="item-status is-served">Pagada</span>
+                        <button type="button" className="text-button" onClick={() => api.printCheck(order.id, check.id).catch((error) => setActionError(error.message))}>Imprimir</button>
+                        <button type="button" className="text-button" onClick={async () => { try { const data = await api.getCheckShare(order.id, check.id); window.open(`https://wa.me/?text=${encodeURIComponent(`${data.message}\n${window.location.origin}${data.url}`)}`, '_blank', 'noopener,noreferrer'); } catch (error) { setActionError(error.message); } }}>Compartir</button>
+                      </div>
+                    ) : (
+                      <div className="check-card-actions">
+                        <button type="button" className="text-button" onClick={() => openTipEditor(check)}>Propina</button>
+                        {canCharge ? <button type="button" className="btn btn-small btn-primary" onClick={() => { setCheckTarget(check); setPaymentOpen(true); }} disabled={leaving}>Cobrar</button> : <span className="field-hint">Cobra caja</span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
           {splitNotice ? <div className="alert alert-success ticket-alert"><Icon name="check" size={18} /><p>{splitNotice}</p></div> : null}
@@ -907,13 +976,13 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 <Icon name="tag" size={16} /> Aplicar cupón
               </button>
             ) : null}
-            {enabled('split_bill') && (order.splits?.length ?? 0) === 0 && order.items.length >= 2 && paidCents === 0 && order.discountCents === 0 && order.tipCents === 0 ? (
+            {enabled('split_bill') && (order.checks?.length ?? 0) === 0 && (order.splits?.length ?? 0) === 0 && order.items.length >= 1 && paidCents === 0 ? (
               <button type="button" className="btn btn-secondary" onClick={() => setSplitOpen(true)} disabled={leaving || saving}>
                 <Icon name="split" size={19} />
                 Dividir cuenta
               </button>
             ) : null}
-            {order.splits?.length > 0 ? null : isCourtesy && canCourtesy ? (
+            {(order.checks?.length ?? 0) > 0 || (order.splits?.length ?? 0) > 0 ? null : isCourtesy && canCourtesy ? (
               <button
                 type="button"
                 className="btn btn-primary btn-charge"
@@ -1022,11 +1091,19 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         onClose={() => setTableOpsOpen(false)}
         onDone={async (updatedOrder) => { applyServerOrder(updatedOrder); if (updatedOrder.status === 'anulada') { onExit(); return; } setSplitNotice('Pedido actualizado.'); }}
       />
-      <SplitBillModal
+      <CheckToolsModal
+        open={checkToolsOpen}
+        order={order}
+        onClose={() => setCheckToolsOpen(false)}
+        onMove={handleMoveCheckLine}
+        onMerge={handleMergeChecks}
+      />
+      <CheckSplitModal
         open={splitOpen}
         order={order}
         onClose={() => setSplitOpen(false)}
-        onSave={handleSplitSave}
+        onEqual={handleEqualChecks}
+        onGroups={handleCheckGroups}
       />
       <Modal
         open={couponOpen}
@@ -1049,9 +1126,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       />
       <PaymentModal
         open={paymentOpen}
-        onClose={() => { setPaymentOpen(false); setSplitTarget(null); }}
+        onClose={() => { setPaymentOpen(false); setSplitTarget(null); setCheckTarget(null); }}
         order={order}
         split={splitTarget}
+        check={checkTarget}
         onSetTip={setTip}
         onConfirm={handlePaymentConfirm}
         onRefresh={async () => {
@@ -1059,6 +1137,20 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
           applyServerOrder(response.order);
         }}
       />
+      <Modal
+        open={Boolean(tipCheck)}
+        onClose={() => setTipCheck(null)}
+        title="Propina de la cuenta"
+        subtitle={tipCheck?.label}
+        size="sm"
+        closeDisabled={tipBusy}
+        footer={<div className="modal-actions"><span /><div className="modal-actions-right"><button type="button" className="btn btn-secondary" onClick={() => setTipCheck(null)} disabled={tipBusy}>Cancelar</button><button type="button" className="btn btn-primary" onClick={() => void saveCheckTip()} disabled={tipBusy}>Guardar</button></div></div>}
+      >
+        <div className="form-grid">
+          <label className="field"><span className="field-label">Tipo</span><select className="input select" value={tipType} onChange={(event) => setTipType(event.target.value)}><option value="none">Sin propina</option><option value="percent">Porcentaje</option><option value="fixed">Monto fijo</option></select></label>
+          <label className="field"><span className="field-label">Valor {tipType === 'percent' ? '(%)' : '(₡)'}</span><input className="input" type="number" min={0} value={tipValue} onChange={(event) => setTipValue(event.target.value)} disabled={tipType === 'none'} /></label>
+        </div>
+      </Modal>
       <ProductModifierModal
         open={Boolean(modifierProduct)}
         product={modifierProduct}
