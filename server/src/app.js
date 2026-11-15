@@ -14,6 +14,7 @@ import {
 import { getSettings, updateSettings, safeFeatures, filterSettingsForRole } from './settings.js';
 import { registerPublicRoutes } from './public.js';
 import { getCatalog } from './catalog.js';
+import { assertCanCharge } from './permissions.js';
 import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, closeCourtesyOrder, refundOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
 import { getDailyReport, dailyReportCsv } from './reports.js';
 import { getBooleanSetting, getSetting } from './settings.js';
@@ -521,6 +522,7 @@ export function createApp({ db, config }) {
   });
 
   api.post('/orders/:id/pay', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    assertCanCharge(db, req.staff);
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(payOrderSchema, req.body);
     res.json({ order: payOrder(db, config, id, input, { staffId: req.staff.id }) });
@@ -579,7 +581,7 @@ export function createApp({ db, config }) {
     res.json({ order: closeCourtesyOrder(db, config, id, { reason: input.reason, staffId: req.staff.id }) });
   });
 
-  api.post('/orders/:id/cancel', requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+  api.post('/orders/:id/cancel', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     res.json({ order: cancelOrder(db, id, { staffId: req.staff.id }) });
   });

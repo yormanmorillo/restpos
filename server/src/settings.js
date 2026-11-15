@@ -50,6 +50,7 @@ const SETTING_VALIDATORS = {
   receipt_printer_port: (value) => /^\d{1,5}$/.test(value) && Number(value) > 0 && Number(value) < 65536,
   auto_print_kitchen: (value) => value === 'true' || value === 'false',
   require_shift: (value) => value === 'true' || value === 'false',
+  server_can_charge: (value) => value === 'true' || value === 'false',
   currency: (value) => ['CRC', 'MXN', 'USD'].includes(value),
   printer_allowed_hosts: (value) => value.length <= 500 && parsePrinterAllowlist(value).every((host) => host.length <= 255),
 };
@@ -138,6 +139,7 @@ export function safeFeatures(db) {
   return {
     ...publicFeatures(db),
     requireShift: getBooleanSetting(db, 'require_shift', true),
+    serverCanCharge: getBooleanSetting(db, 'server_can_charge', true),
     printerEnabled: getBooleanSetting(db, 'printer_enabled', false),
     printerConnection: getSetting(db, 'printer_connection', 'network'),
     printerPaperWidthMm: getSetting(db, 'printer_paper_width_mm', '80'),

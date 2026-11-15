@@ -823,6 +823,7 @@ const SETTINGS_DEFAULTS = {
   printer_allowed_hosts: '',
   auto_print_kitchen: 'false',
   require_shift: 'true',
+  server_can_charge: 'true',
   currency: 'CRC',
   loyalty_points_per_1000_cents: '1',
   loyalty_point_value_cents: '10',

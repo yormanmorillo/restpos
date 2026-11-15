@@ -12,6 +12,7 @@ const DEFAULTS = defaultFeatureFlags();
 export function FeatureProvider({ children }) {
   const { staff } = useAuth();
   const [flags, setFlags] = useState(DEFAULTS);
+  const [serverCanCharge, setServerCanCharge] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -25,10 +26,12 @@ export function FeatureProvider({ children }) {
       const response = await api.getFeatures();
       const next = { ...DEFAULTS, ...(response.features?.flags ?? {}) };
       setFlags(next);
+      setServerCanCharge(response.features?.serverCanCharge !== false);
       cacheFeatures(next);
     } catch {
       const cached = typeof navigator !== 'undefined' && !navigator.onLine ? readCachedFeatures() : null;
       setFlags(cached ? { ...DEFAULTS, ...cached } : DEFAULTS);
+      setServerCanCharge(true);
     } finally {
       setLoading(false);
     }
@@ -37,14 +40,14 @@ export function FeatureProvider({ children }) {
   useEffect(() => { void load(); }, [load]);
 
   const enabled = useCallback((key) => Boolean(flags[key] ?? DEFAULTS[key]), [flags]);
-  const value = useMemo(() => ({ flags, loading, enabled, reload: load, definitions: FEATURES }), [flags, loading, enabled, load]);
+  const value = useMemo(() => ({ flags, loading, enabled, serverCanCharge, reload: load, definitions: FEATURES }), [flags, loading, enabled, serverCanCharge, load]);
   return <FeatureContext.Provider value={value}>{children}</FeatureContext.Provider>;
 }
 
 export function useFeatures() {
   const context = useContext(FeatureContext);
   if (!context) {
-    return { flags: DEFAULTS, loading: false, enabled: (key) => Boolean(DEFAULTS[key]), definitions: FEATURES };
+    return { flags: DEFAULTS, loading: false, enabled: (key) => Boolean(DEFAULTS[key]), serverCanCharge: true, definitions: FEATURES };
   }
   return context;
 }

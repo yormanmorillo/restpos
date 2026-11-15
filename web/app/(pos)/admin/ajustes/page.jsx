@@ -82,6 +82,7 @@ export default function SettingsPage() {
         } : {}),
         auto_print_kitchen: String(bool('auto_print_kitchen')),
         require_shift: String(bool('require_shift')),
+        server_can_charge: String(bool('server_can_charge')),
       };
       const response = await api.updateSettings(payload);
       setSettings({ ...response.settings, delivery_fee_display: centsToInput(Number(response.settings.delivery_fee_cents)) });
@@ -162,6 +163,7 @@ export default function SettingsPage() {
           <section className="panel settings-panel">
             <div className="panel-heading"><div><h2>Caja</h2><p>Control de turnos y efectivo</p></div><Icon name="cash" size={22} /></div>
             <Toggle checked={bool('require_shift')} onChange={(value) => update('require_shift', value)} title="Exigir turno abierto para cobrar" description="Recomendado para llevar control de caja y arqueo." />
+            <Toggle checked={bool('server_can_charge')} onChange={(value) => update('server_can_charge', value)} title="Permitir que los meseros cobren" description="Si se desactiva, el mesero toma pedidos pero caja cobra." />
           </section>
         </div>
 

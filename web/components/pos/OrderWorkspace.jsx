@@ -151,7 +151,7 @@ function PaymentSuccess({ order, onNewOrder }) {
 
 export default function OrderWorkspace({ initialOrder, catalog, onExit, onCompleted }) {
   const { staff } = useAuth();
-  const { enabled } = useFeatures();
+  const { enabled, serverCanCharge } = useFeatures();
   const {
     order,
     saving,
@@ -191,6 +191,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [courtesyReason, setCourtesyReason] = useState('');
   const [courtesyError, setCourtesyError] = useState('');
   const [closingCourtesy, setClosingCourtesy] = useState(false);
+  const canCharge = staff?.role !== 'server' || serverCanCharge;
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitTarget, setSplitTarget] = useState(null);
   const [splitNotice, setSplitNotice] = useState('');
@@ -817,11 +818,11 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                   <div><strong>{split.label || `Parte ${index + 1}`}</strong><span>{split.items.length} producto(s) · {formatMoney(split.totalCents)}</span></div>
                   {split.status === 'paid' ? (
                     <span className="item-status is-served">Pagada</span>
-                  ) : (
+                  ) : canCharge ? (
                     <button type="button" className="btn btn-small btn-secondary" onClick={() => { setSplitTarget(split); setPaymentOpen(true); }} disabled={leaving || split.status === 'paid'}>
                       Cobrar {formatMoney(split.balanceCents)}
                     </button>
-                  )}
+                  ) : <span className="field-hint">Cobra caja</span>}
                 </div>
               ))}
             </div>
@@ -926,7 +927,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 <Icon name="gift" size={22} />
                 Cerrar cortesía · {formatMoney(0)}
               </button>
-            ) : (
+            ) : canCharge ? (
               <button
                 type="button"
                 className="btn btn-primary btn-charge"
@@ -939,6 +940,8 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 <Icon name="cash" size={22} />
                 {paidCents > 0 ? `Cobrar saldo ${formatMoney(balanceCents)}` : `Cobrar ${formatMoney(order.totalCents)}`}
               </button>
+            ) : (
+              <div className="charge-blocked"><Icon name="info" size={17} /> Este pedido lo cobra caja. Envíalo a cocina y avisa al cajero.</div>
             )}
             {enabled('table_transfer_merge') ? (
               <button type="button" className="text-button" onClick={() => setTableOpsOpen(true)} disabled={leaving || saving}>
@@ -948,7 +951,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
             <button type="button" className="text-button" onClick={() => void handleExit()} disabled={leaving || saving}>
               Guardar y volver a mesas
             </button>
-            {['admin', 'manager'].includes(staff?.role) && paidCents === 0 ? (
+            {['owner', 'admin', 'manager'].includes(staff?.role) && paidCents === 0 ? (
               <button type="button" className="text-button text-danger cancel-order-link" onClick={() => setCancelOpen(true)} disabled={leaving || saving}>
                 Anular pedido
               </button>
