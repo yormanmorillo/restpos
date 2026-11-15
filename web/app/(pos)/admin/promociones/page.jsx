@@ -9,7 +9,7 @@ import { formatMoney } from '@/lib/format';
 
 function PromotionsContent() {
   const [promotions, setPromotions] = useState([]);
-  const [form, setForm] = useState({ code: '', name: '', type: 'percent', value: '10', minSubtotal: '0.00', maxUses: '0' });
+  const [form, setForm] = useState({ code: '', name: '', type: 'percent', value: '10', minSubtotal: '0.00', maxUses: '0', autoApply: false, daysOfWeek: '', startTime: '', endTime: '' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,10 +29,10 @@ function PromotionsContent() {
     } catch (parseError) { setError(parseError.message); return; }
     setBusy(true); setError(''); setNotice('');
     try {
-      const response = await api.createPromotion({ code: form.code.trim().toUpperCase(), name: form.name.trim(), type: form.type, value, minSubtotalCents, maxUses: Number(form.maxUses) || 0 });
+      const response = await api.createPromotion({ code: form.code.trim().toUpperCase(), name: form.name.trim(), type: form.type, value, minSubtotalCents, maxUses: Number(form.maxUses) || 0, autoApply: form.autoApply, daysOfWeek: form.daysOfWeek, startTime: form.startTime || null, endTime: form.endTime || null });
       setPromotions((previous) => [response.promotion, ...previous]);
       setNotice(`Cupón ${response.promotion.code} creado.`);
-      setForm({ code: '', name: '', type: 'percent', value: '10', minSubtotal: '0.00', maxUses: '0' });
+      setForm({ code: '', name: '', type: 'percent', value: '10', minSubtotal: '0.00', maxUses: '0', autoApply: false, daysOfWeek: '', startTime: '', endTime: '' });
     } catch (e) { setError(e.message || 'No se pudo crear el cupón.'); }
     finally { setBusy(false); }
   }
@@ -48,7 +48,7 @@ function PromotionsContent() {
           {promotions.length === 0 ? <div className="empty-panel"><Icon name="tag" size={28} /><p>Sin cupones creados.</p></div> : promotions.map((promo) => (
             <div key={promo.id} className={`promo-row ${promo.active ? '' : 'is-inactive'}`}>
               <span className="promo-code">{promo.code}</span>
-              <div><strong>{promo.name}</strong><span>{promo.type === 'percent' ? formatPercentBps(promo.value) : formatMoney(promo.value)} · mínimo {formatMoney(promo.minSubtotalCents)} · {promo.uses}{promo.maxUses ? `/${promo.maxUses}` : ''} usos</span></div>
+              <div><strong>{promo.name}</strong><span>{promo.autoApply ? 'Happy hour · ' : ''}{promo.type === 'percent' ? formatPercentBps(promo.value) : formatMoney(promo.value)} · mínimo {formatMoney(promo.minSubtotalCents)} · {promo.uses}{promo.maxUses ? `/${promo.maxUses}` : ''} usos</span></div>
               <span className={`status-badge ${promo.active ? 'is-active' : 'is-inactive'}`}>{promo.active ? 'Activo' : 'Inactivo'}</span>
             </div>
           ))}
@@ -62,6 +62,12 @@ function PromotionsContent() {
             <label className="field"><span className="field-label">Valor</span><input className="input" inputMode="decimal" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></label>
             <label className="field"><span className="field-label">Mínimo de compra</span><div className="money-input-wrap"><span className="money-prefix">₡</span><input className="input money-input" value={form.minSubtotal} onChange={(e) => setForm({ ...form, minSubtotal: e.target.value })} /></div></label>
             <label className="field"><span className="field-label">Máximo de usos</span><input className="input" type="number" min={0} value={form.maxUses} onChange={(e) => setForm({ ...form, maxUses: e.target.value })} /></label>
+            <label className="toggle-row field field-full"><input type="checkbox" checked={form.autoApply} onChange={(e) => setForm({ ...form, autoApply: e.target.checked })} /><span className="toggle-track" aria-hidden="true"><span /></span><span><strong>Happy hour automático</strong></span></label>
+            {form.autoApply ? <>
+              <label className="field field-full"><span className="field-label">Días (0=domingo, 1=lunes…)</span><input className="input" value={form.daysOfWeek} onChange={(e) => setForm({ ...form, daysOfWeek: e.target.value })} placeholder="1,2,3,4,5" /></label>
+              <label className="field"><span className="field-label">Desde</span><input className="input" type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} /></label>
+              <label className="field"><span className="field-label">Hasta</span><input className="input" type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></label>
+            </> : null}
             <button type="submit" className="btn btn-primary field-full" disabled={busy}><Icon name="plus" size={17} /> Crear cupón</button>
           </form>
         </section>

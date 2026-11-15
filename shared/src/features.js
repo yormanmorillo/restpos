@@ -77,6 +77,18 @@ export const FEATURES = {
     phase: 2,
     defaultEnabled: false,
   },
+  loyalty_redemption: {
+    label: 'Canje de puntos',
+    description: 'Permite pagar parte de la cuenta con puntos de fidelidad.',
+    phase: 2,
+    defaultEnabled: false,
+  },
+  happy_hour: {
+    label: 'Happy hour',
+    description: 'Aplica promociones automáticas por día y horario.',
+    phase: 2,
+    defaultEnabled: false,
+  },
   promotions: {
     label: 'Cupones y promociones',
     description: 'Códigos de descuento con vigencia, mínimo de compra y límite de usos.',

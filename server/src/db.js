@@ -201,6 +201,10 @@ CREATE TABLE IF NOT EXISTS promotions (
   starts_at TEXT,
   ends_at TEXT,
   notes TEXT NOT NULL DEFAULT '',
+  auto_apply INTEGER NOT NULL DEFAULT 0 CHECK (auto_apply IN (0, 1)),
+  days_of_week TEXT NOT NULL DEFAULT '',
+  start_time TEXT,
+  end_time TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -262,6 +266,7 @@ CREATE TABLE IF NOT EXISTS payments (
   method_kind TEXT NOT NULL DEFAULT 'other',
   split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL,
   gift_card_code TEXT,
+  points_redeemed INTEGER NOT NULL DEFAULT 0,
   amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
@@ -660,6 +665,11 @@ export function migrate(db) {
   ensureColumn(db, 'payments', 'method_kind', "TEXT NOT NULL DEFAULT 'other'");
   ensureColumn(db, 'payments', 'split_id', 'INTEGER REFERENCES order_splits(id)');
   ensureColumn(db, 'payments', 'gift_card_code', 'TEXT');
+  ensureColumn(db, 'payments', 'points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'promotions', 'auto_apply', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'promotions', 'days_of_week', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'promotions', 'start_time', 'TEXT');
+  ensureColumn(db, 'promotions', 'end_time', 'TEXT');
 
   ensureColumn(db, 'order_items', 'status', "TEXT NOT NULL DEFAULT 'pending'");
   ensureColumn(db, 'order_items', 'course', 'INTEGER NOT NULL DEFAULT 1');
@@ -803,6 +813,7 @@ const SETTINGS_DEFAULTS = {
   require_shift: 'true',
   currency: 'CRC',
   loyalty_points_per_1000_cents: '1',
+  loyalty_point_value_cents: '10',
   ...Object.fromEntries(FEATURE_KEYS.map((key) => [featureSettingKey(key), FEATURES[key].defaultEnabled ? 'true' : 'false'])),
 };
 
@@ -882,6 +893,7 @@ export function seedOperationalData(db, { now = new Date().toISOString() } = {})
         ['transferencia', 'Transferencia bancaria', 'transfer', 'wallet', 1, 40],
         ['otro', 'Otro', 'other', 'receipt', 0, 50],
         ['gift_card', 'Gift card', 'other', 'wallet', 0, 60],
+        ['puntos', 'Puntos', 'other', 'star', 0, 70],
       ]) {
         insertMethod.run(...method, now, now);
       }

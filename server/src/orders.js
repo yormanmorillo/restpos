@@ -12,6 +12,7 @@ import { resolveActivePaymentMethod } from './payment-methods.js';
 import { consumeInventoryForOrder, productStockAvailability } from './inventory.js';
 import { featureEnabled } from './features.js';
 import { awardLoyaltyForOrder, reverseLoyaltyForOrder } from './customers.js';
+import { findActiveHappyHour } from './promotions.js';
 import { redeemGiftCard } from './gift-cards.js';
 import { listOrderSplits } from './splits.js';
 
@@ -396,6 +397,20 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
 
     const adjustments = parseAdjustments(raw, input);
     assertDiscountAllowed(normalizedItems, adjustments, staffRole);
+    let promotionId = raw.promotion_id ?? null;
+    let promotionCode = raw.promotion_code ?? '';
+    let appliedHappyHour = false;
+    if (!raw.promotion_id && adjustments.discountType === 'none' && featureEnabled(db, 'happy_hour')) {
+      const happyHour = findActiveHappyHour(db, now);
+      if (happyHour) {
+        adjustments.discountType = happyHour.type;
+        adjustments.discountValue = happyHour.value;
+        adjustments.discountReason = `Happy hour ${happyHour.code}`;
+        promotionId = happyHour.id;
+        promotionCode = happyHour.code;
+        appliedHappyHour = true;
+      }
+    }
     const delivery = raw.type === 'llevar'
       ? (input.delivery !== undefined ? Boolean(input.delivery) : Boolean(raw.delivery))
       : false;
@@ -496,6 +511,7 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
         customer_id = ?, customer_name = ?, customer_phone = ?, notes = ?,
         delivery = ?, delivery_address = ?, scheduled_for = ?, delivery_fee_cents = ?,
         subtotal_cents = ?, discount_type = ?, discount_value = ?, discount_cents = ?, discount_reason = ?,
+        promotion_id = ?, promotion_code = ?,
         tax_cents = ?, tip_type = ?, tip_value = ?, tip_cents = ?, total_cents = ?,
         updated_at = ?
       WHERE id = ?
@@ -513,6 +529,8 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       adjustments.discountValue,
       totals.discountCents,
       adjustments.discountReason,
+      promotionId,
+      promotionCode,
       totals.taxCents,
       adjustments.tipType,
       adjustments.tipValue,
@@ -521,6 +539,9 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       timestamp,
       id,
     );
+    if (appliedHappyHour && promotionId) {
+      db.prepare('UPDATE promotions SET uses = uses + 1 WHERE id = ?').run(promotionId);
+    }
     audit(db, staffId, 'order.update', 'order', id, {
       itemCount: normalizedItems.length,
       discountType: adjustments.discountType,
@@ -646,15 +667,26 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
 
     const timestamp = now.toISOString();
     const giftCardCode = paymentMethod.code === 'gift_card' ? String(input.giftCardCode ?? '').trim() : null;
+    let pointsRedeemed = 0;
+    if (paymentMethod.code === 'puntos') {
+      if (!featureEnabled(db, 'loyalty_redemption')) throw conflict('El canje de puntos no está activo.');
+      const customer = raw.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(raw.customer_id) : null;
+      if (!customer) throw validationError('Selecciona un cliente para usar puntos.');
+      const pointValue = Math.max(1, Number(getSetting(db, 'loyalty_point_value_cents', '10')) || 10);
+      if (amountCents % pointValue !== 0) throw validationError(`El monto con puntos debe ser múltiplo de ${pointValue} centavos.`);
+      pointsRedeemed = amountCents / pointValue;
+      if (pointsRedeemed > Number(customer.points_balance)) throw conflict('El cliente no tiene suficientes puntos.');
+      db.prepare('UPDATE customers SET points_balance = points_balance - ?, updated_at = ? WHERE id = ?').run(pointsRedeemed, timestamp, customer.id);
+    }
     if (paymentMethod.code === 'gift_card') {
       if (!giftCardCode) throw validationError('Ingresa el código de la gift card.');
       redeemGiftCard(db, giftCardCode, amountCents, timestamp);
     }
     db.prepare(`
       INSERT INTO payments
-        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id, gift_card_code,
+        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id, gift_card_code, points_redeemed,
          amount_cents, cash_received_cents, change_cents, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       shift?.id ?? null,
@@ -664,6 +696,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       paymentMethod.kind,
       split?.id ?? null,
       giftCardCode,
+      pointsRedeemed,
       amountCents,
       cashReceivedCents,
       changeCents,
@@ -715,6 +748,9 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       id,
     );
 
+    if (pointsRedeemed > 0) {
+      db.prepare('UPDATE orders SET loyalty_points_redeemed = loyalty_points_redeemed + ? WHERE id = ?').run(pointsRedeemed, id);
+    }
     if (closesOrder) {
       db.prepare(`
         UPDATE orders SET

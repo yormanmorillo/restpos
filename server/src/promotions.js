@@ -9,6 +9,7 @@ export function serializePromotion(row) {
     value: Number(row.value), minSubtotalCents: Number(row.min_subtotal_cents),
     maxUses: Number(row.max_uses), uses: Number(row.uses), active: Boolean(row.active),
     startsAt: row.starts_at ?? null, endsAt: row.ends_at ?? null, notes: row.notes,
+    autoApply: Boolean(row.auto_apply), daysOfWeek: row.days_of_week ?? '', startTime: row.start_time ?? null, endTime: row.end_time ?? null,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -34,9 +35,9 @@ export function createPromotion(db, input, staffId, now = new Date().toISOString
   if (db.prepare('SELECT id FROM promotions WHERE code = ? COLLATE NOCASE').get(code)) throw conflict('Ya existe una promoción con ese código.');
   const result = db.prepare(`
     INSERT INTO promotions
-      (code, name, type, value, min_subtotal_cents, max_uses, active, starts_at, ends_at, notes, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(code, input.name.trim(), input.type, input.value, input.minSubtotalCents ?? 0, input.maxUses ?? 0, input.active === false ? 0 : 1, input.startsAt ?? null, input.endsAt ?? null, input.notes ?? '', now, now);
+      (code, name, type, value, min_subtotal_cents, max_uses, active, starts_at, ends_at, notes, auto_apply, days_of_week, start_time, end_time, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(code, input.name.trim(), input.type, input.value, input.minSubtotalCents ?? 0, input.maxUses ?? 0, input.active === false ? 0 : 1, input.startsAt ?? null, input.endsAt ?? null, input.notes ?? '', input.autoApply ? 1 : 0, input.daysOfWeek ?? '', input.startTime ?? null, input.endTime ?? null, now, now);
   const id = Number(result.lastInsertRowid);
   audit(db, staffId, 'promotion.create', 'promotion', id, { code });
   return serializePromotion(db.prepare('SELECT * FROM promotions WHERE id = ?').get(id));
@@ -48,11 +49,11 @@ export function updatePromotion(db, id, input, staffId, now = new Date().toISOSt
   validateInput(input, true);
   const fields = [];
   const params = [];
-  const mapping = [['code', 'code'], ['name', 'name'], ['type', 'type'], ['value', 'value'], ['minSubtotalCents', 'min_subtotal_cents'], ['maxUses', 'max_uses'], ['active', 'active'], ['startsAt', 'starts_at'], ['endsAt', 'ends_at'], ['notes', 'notes']];
+  const mapping = [['code', 'code'], ['name', 'name'], ['type', 'type'], ['value', 'value'], ['minSubtotalCents', 'min_subtotal_cents'], ['maxUses', 'max_uses'], ['active', 'active'], ['startsAt', 'starts_at'], ['endsAt', 'ends_at'], ['notes', 'notes'], ['autoApply', 'auto_apply'], ['daysOfWeek', 'days_of_week'], ['startTime', 'start_time'], ['endTime', 'end_time']];
   for (const [key, column] of mapping) {
     if (input[key] !== undefined) {
       fields.push(`${column} = ?`);
-      params.push(key === 'active' ? (input[key] ? 1 : 0) : key === 'code' ? String(input[key]).trim().toUpperCase() : input[key]);
+      params.push(['active', 'autoApply'].includes(key) ? (input[key] ? 1 : 0) : key === 'code' ? String(input[key]).trim().toUpperCase() : input[key]);
     }
   }
   if (fields.length === 0) throw validationError('No hay cambios para guardar.');
@@ -137,4 +138,31 @@ export function removePromotion(db, orderId, staffId, now = new Date()) {
 // Evita un ciclo de importación con orders.js.
 function getPromotionOrder(db, orderId) {
   return db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+}
+
+
+function zonedParts(now, timezone) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+  const days = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return { day: days[get('weekday')] ?? now.getUTCDay(), time: `${get('hour') === '24' ? '00' : get('hour')}:${get('minute')}` };
+}
+
+export function findActiveHappyHour(db, now = new Date(), timezone = process.env.APP_TIMEZONE || 'America/Costa_Rica') {
+  const { day, time } = zonedParts(now, timezone);
+  const rows = db.prepare("SELECT * FROM promotions WHERE active = 1 AND auto_apply = 1").all();
+  for (const row of rows) {
+    if (row.starts_at && new Date(row.starts_at).getTime() > now.getTime()) continue;
+    if (row.ends_at && new Date(row.ends_at).getTime() < now.getTime()) continue;
+    if (row.max_uses > 0 && row.uses >= row.max_uses) continue;
+    const days = String(row.days_of_week ?? '').split(',').map((value) => value.trim()).filter(Boolean).map(Number);
+    if (days.length > 0 && !days.includes(day)) continue;
+    const start = row.start_time; const end = row.end_time;
+    if (start && end) {
+      const inRange = start <= end ? (time >= start && time <= end) : (time >= start || time <= end);
+      if (!inRange) continue;
+    }
+    return serializePromotion(row);
+  }
+  return null;
 }

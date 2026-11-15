@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **105 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **107 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -191,6 +191,8 @@ Estas funciones están apagadas por defecto y se activan desde **Ajustes → Fun
 - **Reservas y lista de espera:** agenda por fecha, estados, asignación opcional de mesa y fila de espera con tiempo estimado.
 - **Gift cards:** emisión con código, saldo, activación/desactivación y cobro como método de pago.
 - **Cupones:** códigos de descuento con porcentaje/monto, mínimo de compra, vigencia y límite de usos.
+- **Canje de puntos:** pagos parciales o totales con puntos, descontando el saldo del cliente.
+- **Happy hour:** promociones automáticas por días y horario.
 - Estaciones y agotados están apagados por defecto y se activan en **Funciones activables**.
 - Pendientes de Fase 2: canje de puntos, happy hour, combos, pedidos QR y vista móvil de mesero.
 

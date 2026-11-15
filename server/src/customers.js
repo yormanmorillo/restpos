@@ -98,9 +98,10 @@ export function reverseLoyaltyForOrder(db, orderId, now = new Date().toISOString
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order || !order.customer_id || Number(order.loyalty_awarded) !== 1) return;
   const points = Number(order.loyalty_points_earned ?? 0);
+  const redeemed = Number(order.loyalty_points_redeemed ?? 0);
   db.prepare(`
-    UPDATE customers SET points_balance = MAX(0, points_balance - ?),
+    UPDATE customers SET points_balance = MAX(0, points_balance - ? + ?),
       total_spent_cents = MAX(0, total_spent_cents - ?), updated_at = ? WHERE id = ?
-  `).run(points, Number(order.total_cents), now, order.customer_id);
-  db.prepare('UPDATE orders SET loyalty_points_earned = 0, loyalty_awarded = 0 WHERE id = ?').run(orderId);
+  `).run(points, redeemed, Number(order.total_cents), now, order.customer_id);
+  db.prepare('UPDATE orders SET loyalty_points_earned = 0, loyalty_points_redeemed = 0, loyalty_awarded = 0 WHERE id = ?').run(orderId);
 }

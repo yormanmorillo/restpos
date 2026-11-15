@@ -150,6 +150,10 @@ export const promotionCreateSchema = z.object({
   startsAt: z.string().datetime({ offset: true }).nullable().optional(),
   endsAt: z.string().datetime({ offset: true }).nullable().optional(),
   notes: text(300, 'Las notas').optional().default(''),
+  autoApply: z.boolean().optional().default(false),
+  daysOfWeek: z.string().trim().max(50).optional().default(''),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
 });
 
 export const promotionUpdateSchema = promotionCreateSchema.partial().refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');

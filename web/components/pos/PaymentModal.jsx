@@ -78,7 +78,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
     Promise.all([api.getPaymentMethods(), api.getCurrentShift(), api.getFeatures()])
       .then(([methodsResponse, shiftResponse, featuresResponse]) => {
         const active = (methodsResponse.methods ?? []).filter((method) => method.active);
-        setMethods(active.filter((method) => method.code !== 'gift_card' || enabled('gift_cards')));
+        setMethods(active.filter((method) => (method.code !== 'gift_card' || enabled('gift_cards')) && (method.code !== 'puntos' || (enabled('loyalty_redemption') && order.customer?.pointsBalance > 0))));
         setMethodCode(active.find((method) => method.code === 'efectivo')?.code ?? active[0]?.code ?? '');
         setShiftOpen(Boolean(shiftResponse.shift));
         setRequireShift(featuresResponse.features?.require_shift !== 'false');
@@ -350,6 +350,14 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
               </div>
             </div>
           )}
+
+          {selectedMethod?.code === 'puntos' ? (
+            <section className="payment-section">
+              <h3>Puntos</h3>
+              <p className="field-hint">Disponibles: <strong>{order.customer?.pointsBalance ?? 0} puntos</strong>. Cada punto vale ₡10.</p>
+              <button type="button" className="btn btn-small btn-secondary" onClick={() => { const value = Math.min((order.customer?.pointsBalance ?? 0) * 10, balanceCents); setAmountInput(centsToInput(Math.floor(value / 10) * 10)); }}>Usar máximo disponible</button>
+            </section>
+          ) : null}
 
           {selectedMethod?.code === 'gift_card' ? (
             <section className="payment-section">
