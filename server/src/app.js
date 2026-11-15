@@ -48,6 +48,8 @@ import {
   transferItemsSchema,
   kitchenStationCreateSchema,
   kitchenStationUpdateSchema,
+  customerCreateSchema,
+  customerUpdateSchema,
   orderListQuerySchema,
   dateQuerySchema,
   categoryCreateSchema,
@@ -88,6 +90,7 @@ import { requireFeature } from './features.js';
 import { createOrderSplits, clearOrderSplits } from './splits.js';
 import { moveOrderToTable, mergeOrders, transferItems } from './table-ops.js';
 import { createOfflineSale } from './offline.js';
+import { listCustomers, getCustomer, createCustomer, updateCustomer } from './customers.js';
 import { serializeProduct } from './serializers.js';
 import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
 
@@ -163,6 +166,26 @@ export function createApp({ db, config }) {
 
   api.get('/features', (req, res) => {
     res.json({ features: safeFeatures(db) });
+  });
+
+  api.get('/customers', requireFeature(db, 'customers_loyalty'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    res.json({ customers: listCustomers(db, { query: req.query.q ?? '', limit: req.query.limit }) });
+  });
+
+  api.get('/customers/:id', requireFeature(db, 'customers_loyalty'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    res.json({ customer: getCustomer(db, id) });
+  });
+
+  api.post('/customers', requireFeature(db, 'customers_loyalty'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const input = parseOrThrow(customerCreateSchema, req.body);
+    res.status(201).json({ customer: createCustomer(db, input, req.staff.id) });
+  });
+
+  api.patch('/customers/:id', requireFeature(db, 'customers_loyalty'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(customerUpdateSchema, req.body);
+    res.json({ customer: updateCustomer(db, id, input, req.staff.id) });
   });
 
   api.get('/catalog', (req, res) => {

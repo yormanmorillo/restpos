@@ -41,6 +41,7 @@ export const createOrderSchema = z
   .object({
     type: z.enum(['mesa', 'llevar'], { error: 'El tipo de pedido debe ser "mesa" o "llevar".' }),
     tableId: z.number().int().positive('La mesa debe ser un identificador válido.').nullable().optional(),
+    customerId: z.number().int().positive().nullable().optional(),
     customerName: text(100, 'El nombre del cliente').optional().default(''),
     customerPhone: text(30, 'El teléfono').optional().default(''),
     notes: text(500, 'Las notas del pedido').optional().default(''),
@@ -95,6 +96,7 @@ export const draftSchema = z
       .array(draftItemSchema)
       .max(MAX_LINE_ITEMS, `El pedido no puede tener más de ${MAX_LINE_ITEMS} líneas.`)
       .optional(),
+    customerId: z.number().int().positive().nullable().optional(),
     customerName: text(100, 'El nombre del cliente').optional(),
     customerPhone: text(30, 'El teléfono').optional(),
     notes: text(500, 'Las notas del pedido').optional(),
@@ -136,6 +138,18 @@ export const draftSchema = z
       });
     }
   });
+
+export const customerCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
+  phone: text(30, 'El teléfono').optional().default(''),
+  email: text(120, 'El correo').optional().default(''),
+  notes: text(500, 'Las notas').optional().default(''),
+});
+
+export const customerUpdateSchema = customerCreateSchema
+  .partial()
+  .extend({ active: z.boolean().optional() })
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');
 
 export const kitchenStationCreateSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(50),

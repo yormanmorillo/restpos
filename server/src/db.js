@@ -49,6 +49,21 @@ CREATE TABLE IF NOT EXISTS restaurant_tables (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS customers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  points_balance INTEGER NOT NULL DEFAULT 0 CHECK (points_balance >= 0),
+  total_spent_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_spent_cents >= 0),
+  visits INTEGER NOT NULL DEFAULT 0 CHECK (visits >= 0),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS customers_search_idx ON customers(name, phone);
+
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_number TEXT NOT NULL UNIQUE,
@@ -56,6 +71,10 @@ CREATE TABLE IF NOT EXISTS orders (
   table_id INTEGER REFERENCES restaurant_tables(id),
   status TEXT NOT NULL DEFAULT 'abierta' CHECK (status IN ('abierta', 'pagada', 'anulada')),
   customer_name TEXT NOT NULL DEFAULT '',
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  loyalty_points_earned INTEGER NOT NULL DEFAULT 0,
+  loyalty_points_redeemed INTEGER NOT NULL DEFAULT 0,
+  loyalty_awarded INTEGER NOT NULL DEFAULT 0,
   notes TEXT NOT NULL DEFAULT '',
   subtotal_cents INTEGER NOT NULL DEFAULT 0 CHECK (subtotal_cents >= 0),
   discount_type TEXT NOT NULL DEFAULT 'none' CHECK (discount_type IN ('none', 'percent', 'fixed')),
@@ -387,6 +406,10 @@ function rebuildLegacyPaymentTables(db) {
         table_id INTEGER REFERENCES restaurant_tables(id),
         status TEXT NOT NULL DEFAULT 'abierta' CHECK (status IN ('abierta', 'pagada', 'anulada')),
         customer_name TEXT NOT NULL DEFAULT '',
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        loyalty_points_earned INTEGER NOT NULL DEFAULT 0,
+        loyalty_points_redeemed INTEGER NOT NULL DEFAULT 0,
+        loyalty_awarded INTEGER NOT NULL DEFAULT 0,
         notes TEXT NOT NULL DEFAULT '',
         subtotal_cents INTEGER NOT NULL DEFAULT 0 CHECK (subtotal_cents >= 0),
         discount_type TEXT NOT NULL DEFAULT 'none' CHECK (discount_type IN ('none', 'percent', 'fixed')),
@@ -431,7 +454,7 @@ function rebuildLegacyPaymentTables(db) {
       );
 
       INSERT INTO orders_rebuild (
-        id, order_number, type, table_id, status, customer_name, notes,
+        id, order_number, type, table_id, status, customer_name, customer_id, loyalty_points_earned, loyalty_points_redeemed, loyalty_awarded, notes,
         subtotal_cents, discount_type, discount_value, discount_cents, discount_reason,
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method, payment_method_name, cash_received_cents, change_cents,
@@ -442,7 +465,7 @@ function rebuildLegacyPaymentTables(db) {
         scheduled_for, delivery_fee_cents, public_receipt_token, client_operation_id
       )
       SELECT
-        id, order_number, type, table_id, status, customer_name, notes,
+        id, order_number, type, table_id, status, customer_name, customer_id, loyalty_points_earned, loyalty_points_redeemed, loyalty_awarded, notes,
         subtotal_cents, discount_type, discount_value, discount_cents, discount_reason,
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method,
@@ -538,6 +561,10 @@ export function migrate(db) {
 
   ensureColumn(db, 'orders', 'delivery', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'customer_phone', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'orders', 'customer_id', 'INTEGER REFERENCES customers(id)');
+  ensureColumn(db, 'orders', 'loyalty_points_earned', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'orders', 'loyalty_points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'orders', 'loyalty_awarded', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'delivery_address', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'source', "TEXT NOT NULL DEFAULT 'pos'");
   ensureColumn(db, 'orders', 'amount_paid_cents', 'INTEGER NOT NULL DEFAULT 0');
@@ -703,6 +730,7 @@ const SETTINGS_DEFAULTS = {
   auto_print_kitchen: 'false',
   require_shift: 'true',
   currency: 'CRC',
+  loyalty_points_per_1000_cents: '1',
   ...Object.fromEntries(FEATURE_KEYS.map((key) => [featureSettingKey(key), FEATURES[key].defaultEnabled ? 'true' : 'false'])),
 };
 

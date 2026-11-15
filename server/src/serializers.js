@@ -93,6 +93,8 @@ export function serializeOrder(row, items = []) {
     tableName: row.table_name ?? null,
     status: row.status,
     customerName: row.customer_name,
+    customerId: row.customer_id === null || row.customer_id === undefined ? null : Number(row.customer_id),
+    loyaltyPointsEarned: Number(row.loyalty_points_earned ?? 0),
     customerPhone: row.customer_phone ?? '',
     notes: row.notes,
     delivery: Boolean(row.delivery),

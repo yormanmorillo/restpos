@@ -235,9 +235,9 @@ SESSION_TTL_HOURS: "12"
 
 El frontend necesita `API_URL=http://api:4000` y `PORT=3000`.
 
-## Fase 2 (primer bloque)
+## Fase 2 (segundo bloque)
 
-Activa `kitchen_stations` para configurar estaciones en **Administración → Estaciones**, asignar cada producto a una estación y filtrar el KDS por estación. Activa `inventory_sold_out` para bloquear productos cuya receta no tenga stock suficiente.
+Activa `customers_loyalty` para clientes, historial y puntos. Activa `kitchen_stations` para configurar estaciones en **Administración → Estaciones**, asignar cada producto a una estación y filtrar el KDS por estación. Activa `inventory_sold_out` para bloquear productos cuya receta no tenga stock suficiente.
 
 ## Fase 1
 

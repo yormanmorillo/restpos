@@ -82,6 +82,10 @@ export const api = {
 
   getFeatures: () => request('/features'),
   getCatalog: () => request('/catalog'),
+  getCustomers: (query) => request(`/customers${queryString({ q: query })}`),
+  getCustomer: (id) => request(`/customers/${id}`),
+  createCustomer: (body) => request('/customers', { method: 'POST', body }),
+  updateCustomer: (id, body) => request(`/customers/${id}`, { method: 'PATCH', body }),
   getTables: () => request('/tables'),
   getAreas: () => request('/areas'),
   getOrders: (params) => request(`/orders${queryString(params)}`),

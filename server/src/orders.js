@@ -11,6 +11,7 @@ import { getSetting } from './settings.js';
 import { resolveActivePaymentMethod } from './payment-methods.js';
 import { consumeInventoryForOrder, productStockAvailability } from './inventory.js';
 import { featureEnabled } from './features.js';
+import { awardLoyaltyForOrder, reverseLoyaltyForOrder } from './customers.js';
 import { listOrderSplits } from './splits.js';
 
 const MAX_DISCOUNT_BPS = { server: 1000, cashier: 1000, manager: 2500, admin: 10000, owner: 10000 };
@@ -105,6 +106,12 @@ export function getOrder(db, id) {
   const order = serializeOrder(row, loadItems(db, id));
   order.payments = loadPayments(db, id).map(serializePayment);
   order.splits = listOrderSplits(db, id);
+  if (order.customerId) {
+    const customer = db.prepare('SELECT id, name, phone, points_balance FROM customers WHERE id = ?').get(order.customerId);
+    order.customer = customer ? { id: Number(customer.id), name: customer.name, phone: customer.phone, pointsBalance: Number(customer.points_balance) } : null;
+  } else {
+    order.customer = null;
+  }
   return order;
 }
 
@@ -176,6 +183,9 @@ function modifierIdsOf(row) {
 
 export function createOrder(db, config, input, { now = new Date(), staffId = null } = {}) {
   const timestamp = now.toISOString();
+  if (input.customerId && !db.prepare('SELECT id FROM customers WHERE id = ? AND active = 1').get(input.customerId)) {
+    throw validationError('El cliente seleccionado no está disponible.');
+  }
   let orderId;
   const deliveryFeeCents = input.delivery
     ? Number(getSetting(db, 'delivery_fee_cents', '0'))
@@ -200,15 +210,16 @@ export function createOrder(db, config, input, { now = new Date(), staffId = nul
       const result = db
         .prepare(`
           INSERT INTO orders
-            (order_number, type, table_id, status, customer_name, customer_phone, notes,
+            (order_number, type, table_id, status, customer_id, customer_name, customer_phone, notes,
              delivery, delivery_address, source, scheduled_for, delivery_fee_cents, tax_rate_bps,
              business_date, opened_by_staff_id, created_at, updated_at)
-          VALUES (?, ?, ?, 'abierta', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, 'abierta', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           `TMP-${randomUUID()}`,
           input.type,
           input.type === 'mesa' ? input.tableId : null,
+          input.customerId ?? null,
           input.customerName ?? '',
           input.customerPhone ?? '',
           input.notes ?? '',
@@ -255,6 +266,9 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
     }
     if (input.delivery === true && raw.type !== 'llevar') {
       throw validationError('Solo un pedido para llevar puede marcarse como delivery.');
+    }
+    if (input.customerId && !db.prepare('SELECT id FROM customers WHERE id = ? AND active = 1').get(input.customerId)) {
+      throw validationError('El cliente seleccionado no está disponible.');
     }
     if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
       throw conflict('No se puede modificar un pedido con la cuenta dividida.');
@@ -478,13 +492,14 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
 
     db.prepare(`
       UPDATE orders SET
-        customer_name = ?, customer_phone = ?, notes = ?,
+        customer_id = ?, customer_name = ?, customer_phone = ?, notes = ?,
         delivery = ?, delivery_address = ?, scheduled_for = ?, delivery_fee_cents = ?,
         subtotal_cents = ?, discount_type = ?, discount_value = ?, discount_cents = ?, discount_reason = ?,
         tax_cents = ?, tip_type = ?, tip_value = ?, tip_cents = ?, total_cents = ?,
         updated_at = ?
       WHERE id = ?
     `).run(
+      input.customerId !== undefined ? input.customerId : raw.customer_id,
       input.customerName !== undefined ? input.customerName : raw.customer_name,
       input.customerPhone !== undefined ? input.customerPhone : raw.customer_phone,
       input.notes !== undefined ? input.notes : raw.notes,
@@ -705,6 +720,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
         db.prepare("UPDATE restaurant_tables SET status = 'libre' WHERE id = ?").run(raw.table_id);
       }
       consumeInventoryForOrder(db, id, staffId, timestamp);
+      awardLoyaltyForOrder(db, id, timestamp);
     }
 
     audit(db, staffId, closesOrder ? 'order.pay' : 'order.partial_payment', 'order', id, {
@@ -834,7 +850,10 @@ export function refundOrder(db, config, id, { reason, amountCents: requestedAmou
     db.prepare(`
       UPDATE orders SET refunded_at = ?, refund_cents = ?, refund_reason = ?, updated_at = ? WHERE id = ?
     `).run(cumulativeRefund >= totalCents ? timestamp : null, cumulativeRefund, cleanReason, timestamp, id);
-    if (cumulativeRefund >= totalCents) reverseInventoryForOrder(db, id, staffId, timestamp);
+    if (cumulativeRefund >= totalCents) {
+      reverseInventoryForOrder(db, id, staffId, timestamp);
+      reverseLoyaltyForOrder(db, id, timestamp);
+    }
     audit(db, staffId, 'order.refund', 'order', id, {
       amountCents,
       cumulativeRefund,

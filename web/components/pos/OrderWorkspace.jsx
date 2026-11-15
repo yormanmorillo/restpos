@@ -12,6 +12,7 @@ import PaymentModal from './PaymentModal';
 import ProductModifierModal from './ProductModifierModal';
 import SplitBillModal from './SplitBillModal';
 import TableOpsModal from './TableOpsModal';
+import CustomerPickerModal from './CustomerPickerModal';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useFeatures } from '@/components/FeatureProvider';
@@ -163,6 +164,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
     setDiscount,
     setTip,
     setCustomerName,
+    setCustomer,
     setCustomerPhone,
     setDeliveryAddress,
     setOrderNotes,
@@ -193,6 +195,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [splitTarget, setSplitTarget] = useState(null);
   const [splitNotice, setSplitNotice] = useState('');
   const [tableOpsOpen, setTableOpsOpen] = useState(false);
+  const [customerOpen, setCustomerOpen] = useState(false);
 
   const allProducts = useMemo(
     () =>
@@ -600,6 +603,14 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
               disabled={locked}
             />
           </label>
+          {enabled('customers_loyalty') ? (
+            <div className="customer-picker-trigger">
+              <button type="button" className="btn btn-small btn-secondary" onClick={() => setCustomerOpen(true)} disabled={locked}>
+                <Icon name="users" size={16} /> {order.customer ? 'Cambiar cliente' : 'Buscar cliente'}
+              </button>
+              {order.customer ? <span className="customer-points">{order.customer.name} · {order.customer.pointsBalance} pts</span> : null}
+            </div>
+          ) : null}
           <label className="customer-field order-notes-field">
             <span>Notas del pedido <small>opcional</small></span>
             <input
@@ -967,6 +978,11 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         {courtesyError ? <p className="form-error">{courtesyError}</p> : null}
       </Modal>
 
+      <CustomerPickerModal
+        open={customerOpen}
+        onClose={() => setCustomerOpen(false)}
+        onSelect={(customer) => setCustomer(customer)}
+      />
       <TableOpsModal
         open={tableOpsOpen}
         order={order}

@@ -48,6 +48,7 @@ function toPayload(order) {
       modifiers: (item.modifiers ?? []).map((modifier) => Number(modifier.modifierId)).filter(Boolean),
       course: item.course ?? 1,
     })),
+    customerId: order.customerId ?? null,
     customerName: order.customerName ?? '',
     customerPhone: order.customerPhone ?? '',
     notes: order.notes ?? '',
@@ -262,6 +263,15 @@ export function useDraftOrder(initialOrder) {
     }));
   }, [commit]);
 
+  const setCustomer = useCallback((customer) => {
+    commit((previous) => ({
+      ...previous,
+      customerId: customer?.id ?? null,
+      customerName: customer?.name ?? previous.customerName,
+      customerPhone: customer?.phone ?? previous.customerPhone,
+    }));
+  }, [commit]);
+
   const setCustomerName = useCallback((customerName) => {
     commit((previous) => ({ ...previous, customerName: customerName.slice(0, 100) }));
   }, [commit]);
@@ -339,6 +349,7 @@ export function useDraftOrder(initialOrder) {
     setDiscount,
     setTip,
     setCustomerName,
+    setCustomer,
     setOrderNotes,
     setCustomerPhone,
     setDeliveryAddress,

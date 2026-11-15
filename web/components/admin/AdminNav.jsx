@@ -13,6 +13,7 @@ const TABS = [
   { href: '/admin/cocina', label: 'Estaciones', icon: 'chef', feature: 'kitchen_stations' },
   { href: '/admin/inventario', label: 'Inventario', icon: 'box', feature: 'inventory' },
   { href: '/admin/pagos', label: 'Pagos', icon: 'card' },
+  { href: '/admin/clientes', label: 'Clientes', icon: 'users', feature: 'customers_loyalty' },
   { href: '/admin/equipo', label: 'Equipo', icon: 'users', adminOnly: true },
   { href: '/admin/ajustes', label: 'Ajustes', icon: 'settings' },
 ];
