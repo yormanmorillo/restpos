@@ -52,6 +52,9 @@ import {
   customerUpdateSchema,
   giftCardCreateSchema,
   giftCardUpdateSchema,
+  promotionCreateSchema,
+  promotionUpdateSchema,
+  applyPromotionSchema,
   reservationCreateSchema,
   reservationUpdateSchema,
   waitlistCreateSchema,
@@ -97,6 +100,7 @@ import { createOrderSplits, clearOrderSplits } from './splits.js';
 import { moveOrderToTable, mergeOrders, transferItems } from './table-ops.js';
 import { createOfflineSale } from './offline.js';
 import { listGiftCards, findGiftCard, createGiftCard, updateGiftCard } from './gift-cards.js';
+import { listPromotions, createPromotion, updatePromotion, applyPromotion, removePromotion } from './promotions.js';
 import { listReservations, createReservation, updateReservation, listWaitlist, createWaitlistEntry, updateWaitlistEntry } from './reservations.js';
 import { listCustomers, getCustomer, createCustomer, updateCustomer } from './customers.js';
 import { serializeProduct } from './serializers.js';
@@ -174,6 +178,34 @@ export function createApp({ db, config }) {
 
   api.get('/features', (req, res) => {
     res.json({ features: safeFeatures(db) });
+  });
+
+  api.get('/promotions', requireFeature(db, 'promotions'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    res.json({ promotions: listPromotions(db) });
+  });
+
+  api.post('/promotions', requireFeature(db, 'promotions'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const input = parseOrThrow(promotionCreateSchema, req.body);
+    res.status(201).json({ promotion: createPromotion(db, input, req.staff.id) });
+  });
+
+  api.patch('/promotions/:id', requireFeature(db, 'promotions'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(promotionUpdateSchema, req.body);
+    res.json({ promotion: updatePromotion(db, id, input, req.staff.id) });
+  });
+
+  api.post('/orders/:id/promotion', requireFeature(db, 'promotions'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(applyPromotionSchema, req.body);
+    applyPromotion(db, id, input.code, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.delete('/orders/:id/promotion', requireFeature(db, 'promotions'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    removePromotion(db, id, req.staff.id);
+    res.json({ order: getOrder(db, id) });
   });
 
   api.get('/gift-cards', requireFeature(db, 'gift_cards'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {

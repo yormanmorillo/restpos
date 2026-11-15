@@ -116,6 +116,8 @@ export function serializeOrder(row, items = []) {
     discountValue: Number(row.discount_value),
     discountCents: Number(row.discount_cents),
     discountReason: row.discount_reason ?? '',
+    promotionId: row.promotion_id === null || row.promotion_id === undefined ? null : Number(row.promotion_id),
+    promotionCode: row.promotion_code ?? '',
     refundedAt: row.refunded_at ?? null,
     refundCents: Number(row.refund_cents ?? 0),
     refundReason: row.refund_reason ?? '',

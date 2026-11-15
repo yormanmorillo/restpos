@@ -77,6 +77,12 @@ export const FEATURES = {
     phase: 2,
     defaultEnabled: false,
   },
+  promotions: {
+    label: 'Cupones y promociones',
+    description: 'Códigos de descuento con vigencia, mínimo de compra y límite de usos.',
+    phase: 2,
+    defaultEnabled: false,
+  },
   gift_cards: {
     label: 'Gift cards',
     description: 'Emisión y cobro con tarjetas de regalo.',

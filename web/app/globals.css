@@ -5798,3 +5798,15 @@ h1 { font-weight: 700; }
 .gift-card-row strong { font-size: 0.74rem; }
 .gift-card-row span { color: var(--ink-faint); font-size: 0.62rem; }
 @media (max-width: 900px) { .gift-layout { grid-template-columns: 1fr; } }
+
+.promo-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; }
+.promo-list-panel, .promo-create-panel { padding: 16px; display: flex; flex-direction: column; gap: 9px; }
+.promo-list-panel h2, .promo-create-panel h2 { font-size: 1rem; }
+.promo-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.promo-row:last-child { border-bottom: 0; }
+.promo-row.is-inactive { opacity: 0.5; }
+.promo-code { min-width: 120px; padding: 4px 6px; border-radius: 5px; background: var(--gold-pale); color: var(--amber); font-size: 0.68rem; font-weight: 750; }
+.promo-row > div { display: flex; flex: 1; flex-direction: column; gap: 1px; }
+.promo-row strong { font-size: 0.76rem; }
+.promo-row span { color: var(--ink-faint); font-size: 0.63rem; }
+@media (max-width: 900px) { .promo-layout { grid-template-columns: 1fr; } }

@@ -139,6 +139,23 @@ export const draftSchema = z
     }
   });
 
+export const promotionCreateSchema = z.object({
+  code: z.string().trim().regex(/^[A-Za-z0-9_-]{3,40}$/, 'Código inválido.'),
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
+  type: z.enum(['percent', 'fixed']),
+  value: z.number().int().min(0),
+  minSubtotalCents: z.number().int().min(0).optional().default(0),
+  maxUses: z.number().int().min(0).optional().default(0),
+  active: z.boolean().optional().default(true),
+  startsAt: z.string().datetime({ offset: true }).nullable().optional(),
+  endsAt: z.string().datetime({ offset: true }).nullable().optional(),
+  notes: text(300, 'Las notas').optional().default(''),
+});
+
+export const promotionUpdateSchema = promotionCreateSchema.partial().refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');
+
+export const applyPromotionSchema = z.object({ code: z.string().trim().min(1, 'Ingresa el código.') });
+
 export const giftCardCreateSchema = z.object({
   code: z.string().trim().max(60).optional().default(''),
   amountCents: z.number().int().positive('El monto debe ser positivo.'),

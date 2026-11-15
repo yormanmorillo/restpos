@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS orders (
   status TEXT NOT NULL DEFAULT 'abierta' CHECK (status IN ('abierta', 'pagada', 'anulada')),
   customer_name TEXT NOT NULL DEFAULT '',
   customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  promotion_id INTEGER REFERENCES promotions(id) ON DELETE SET NULL,
+  promotion_code TEXT NOT NULL DEFAULT '',
   loyalty_points_earned INTEGER NOT NULL DEFAULT 0,
   loyalty_points_redeemed INTEGER NOT NULL DEFAULT 0,
   loyalty_awarded INTEGER NOT NULL DEFAULT 0,
@@ -185,6 +187,24 @@ CREATE TABLE IF NOT EXISTS shifts (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS shifts_one_open ON shifts(status) WHERE status = 'open';
 CREATE INDEX IF NOT EXISTS shifts_opened_at_idx ON shifts(opened_at);
+
+CREATE TABLE IF NOT EXISTS promotions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('percent', 'fixed')),
+  value INTEGER NOT NULL CHECK (value >= 0),
+  min_subtotal_cents INTEGER NOT NULL DEFAULT 0 CHECK (min_subtotal_cents >= 0),
+  max_uses INTEGER NOT NULL DEFAULT 0 CHECK (max_uses >= 0),
+  uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  starts_at TEXT,
+  ends_at TEXT,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS promotions_active_idx ON promotions(active, code);
 
 CREATE TABLE IF NOT EXISTS gift_cards (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -454,6 +474,8 @@ function rebuildLegacyPaymentTables(db) {
         status TEXT NOT NULL DEFAULT 'abierta' CHECK (status IN ('abierta', 'pagada', 'anulada')),
         customer_name TEXT NOT NULL DEFAULT '',
         customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        promotion_id INTEGER REFERENCES promotions(id) ON DELETE SET NULL,
+        promotion_code TEXT NOT NULL DEFAULT '',
         loyalty_points_earned INTEGER NOT NULL DEFAULT 0,
         loyalty_points_redeemed INTEGER NOT NULL DEFAULT 0,
         loyalty_awarded INTEGER NOT NULL DEFAULT 0,
@@ -501,7 +523,7 @@ function rebuildLegacyPaymentTables(db) {
       );
 
       INSERT INTO orders_rebuild (
-        id, order_number, type, table_id, status, customer_name, customer_id, loyalty_points_earned, loyalty_points_redeemed, loyalty_awarded, notes,
+        id, order_number, type, table_id, status, customer_name, customer_id, promotion_id, promotion_code, loyalty_points_earned, loyalty_points_redeemed, loyalty_awarded, notes,
         subtotal_cents, discount_type, discount_value, discount_cents, discount_reason,
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method, payment_method_name, cash_received_cents, change_cents,
@@ -512,7 +534,7 @@ function rebuildLegacyPaymentTables(db) {
         scheduled_for, delivery_fee_cents, public_receipt_token, client_operation_id
       )
       SELECT
-        id, order_number, type, table_id, status, customer_name, customer_id, loyalty_points_earned, loyalty_points_redeemed, loyalty_awarded, notes,
+        id, order_number, type, table_id, status, customer_name, customer_id, promotion_id, promotion_code, loyalty_points_earned, loyalty_points_redeemed, loyalty_awarded, notes,
         subtotal_cents, discount_type, discount_value, discount_cents, discount_reason,
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method,
@@ -609,6 +631,8 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'delivery', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'customer_phone', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'customer_id', 'INTEGER REFERENCES customers(id)');
+  ensureColumn(db, 'orders', 'promotion_id', 'INTEGER REFERENCES promotions(id)');
+  ensureColumn(db, 'orders', 'promotion_code', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'loyalty_points_earned', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'loyalty_points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'loyalty_awarded', 'INTEGER NOT NULL DEFAULT 0');

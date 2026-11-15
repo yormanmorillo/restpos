@@ -82,6 +82,11 @@ export const api = {
 
   getFeatures: () => request('/features'),
   getCatalog: () => request('/catalog'),
+  getPromotions: () => request('/promotions'),
+  createPromotion: (body) => request('/promotions', { method: 'POST', body }),
+  updatePromotion: (id, body) => request(`/promotions/${id}`, { method: 'PATCH', body }),
+  applyPromotion: (orderId, code) => request(`/orders/${orderId}/promotion`, { method: 'POST', body: { code } }),
+  removePromotion: (orderId) => request(`/orders/${orderId}/promotion`, { method: 'DELETE' }),
   getGiftCards: () => request('/gift-cards'),
   getGiftCard: (code) => request(`/gift-cards/${encodeURIComponent(code)}`),
   createGiftCard: (body) => request('/gift-cards', { method: 'POST', body }),

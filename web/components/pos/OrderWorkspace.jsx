@@ -196,6 +196,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [splitNotice, setSplitNotice] = useState('');
   const [tableOpsOpen, setTableOpsOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponError, setCouponError] = useState('');
+  const [couponBusy, setCouponBusy] = useState(false);
 
   const allProducts = useMemo(
     () =>
@@ -322,6 +326,23 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
     if (!noteEditor) return;
     setItemNotes(noteEditor.clientKey, noteEditor.value.trim());
     setNoteEditor(null);
+  }
+
+  async function applyCoupon() {
+    if (!couponCode.trim()) { setCouponError('Ingresa el código.'); return; }
+    setCouponBusy(true); setCouponError('');
+    try {
+      const response = await api.applyPromotion(order.id, couponCode.trim());
+      applyServerOrder(response.order);
+      setCouponOpen(false);
+      setCouponCode('');
+    } catch (error) { setCouponError(error.message || 'No se pudo aplicar el cupón.'); }
+    finally { setCouponBusy(false); }
+  }
+
+  async function removeCoupon() {
+    try { const response = await api.removePromotion(order.id); applyServerOrder(response.order); }
+    catch (error) { setActionError(error.message || 'No se pudo quitar el cupón.'); }
   }
 
   async function handleClearSplits() {
@@ -876,6 +897,15 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 Enviar a cocina · {pendingCount}
               </button>
             ) : null}
+            {enabled('promotions') && (order.splits?.length ?? 0) === 0 && paidCents === 0 && order.promotionCode ? (
+              <button type="button" className="btn btn-small btn-secondary" onClick={() => void removeCoupon()} disabled={leaving || saving}>
+                <Icon name="tag" size={16} /> Quitar cupón {order.promotionCode}
+              </button>
+            ) : enabled('promotions') && (order.splits?.length ?? 0) === 0 && paidCents === 0 ? (
+              <button type="button" className="btn btn-small btn-secondary" onClick={() => { setCouponCode(''); setCouponError(''); setCouponOpen(true); }} disabled={leaving || saving}>
+                <Icon name="tag" size={16} /> Aplicar cupón
+              </button>
+            ) : null}
             {enabled('split_bill') && (order.splits?.length ?? 0) === 0 && order.items.length >= 2 && paidCents === 0 && order.discountCents === 0 && order.tipCents === 0 ? (
               <button type="button" className="btn btn-secondary" onClick={() => setSplitOpen(true)} disabled={leaving || saving}>
                 <Icon name="split" size={19} />
@@ -995,6 +1025,18 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         onClose={() => setSplitOpen(false)}
         onSave={handleSplitSave}
       />
+      <Modal
+        open={couponOpen}
+        onClose={() => setCouponOpen(false)}
+        title="Aplicar cupón"
+        subtitle="Se aplicará como descuento del pedido."
+        size="sm"
+        closeDisabled={couponBusy}
+        footer={<div className="modal-actions"><span /><div className="modal-actions-right"><button type="button" className="btn btn-secondary" onClick={() => setCouponOpen(false)} disabled={couponBusy}>Cancelar</button><button type="button" className="btn btn-primary" onClick={() => void applyCoupon()} disabled={couponBusy}>Aplicar</button></div></div>}
+      >
+        <label className="field"><span className="field-label">Código del cupón</span><input className="input" value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="EJ. BIENVENIDO10" autoFocus /></label>
+        {couponError ? <p className="form-error">{couponError}</p> : null}
+      </Modal>
       <DiscountModal
         open={discountOpen}
         onClose={() => setDiscountOpen(false)}
