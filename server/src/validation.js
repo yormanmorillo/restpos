@@ -151,6 +151,30 @@ export const customerUpdateSchema = customerCreateSchema
   .extend({ active: z.boolean().optional() })
   .refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');
 
+export const reservationCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
+  phone: text(30, 'El teléfono').optional().default(''),
+  partySize: z.number().int().min(1).max(50),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida.'),
+  time: z.string().regex(/^\d{2}:\d{2}$/, 'Hora inválida.'),
+  tableId: z.number().int().positive().nullable().optional(),
+  customerId: z.number().int().positive().nullable().optional(),
+  notes: text(500, 'Las notas').optional().default(''),
+  status: z.enum(['pending', 'confirmed', 'seated', 'cancelled', 'no_show']).optional().default('pending'),
+});
+
+export const reservationUpdateSchema = reservationCreateSchema.partial().refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');
+
+export const waitlistCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
+  phone: text(30, 'El teléfono').optional().default(''),
+  partySize: z.number().int().min(1).max(50),
+  quotedMinutes: z.number().int().min(0).max(600).optional().default(0),
+  notes: text(500, 'Las notas').optional().default(''),
+});
+
+export const waitlistUpdateSchema = z.object({ status: z.enum(['waiting', 'seated', 'cancelled']) });
+
 export const kitchenStationCreateSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(50),
   color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Usa un color hexadecimal.').optional().default('#c45d3a'),

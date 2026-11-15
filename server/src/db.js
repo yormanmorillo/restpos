@@ -186,6 +186,37 @@ CREATE TABLE IF NOT EXISTS shifts (
 CREATE UNIQUE INDEX IF NOT EXISTS shifts_one_open ON shifts(status) WHERE status = 'open';
 CREATE INDEX IF NOT EXISTS shifts_opened_at_idx ON shifts(opened_at);
 
+CREATE TABLE IF NOT EXISTS reservations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  party_size INTEGER NOT NULL CHECK (party_size BETWEEN 1 AND 50),
+  reservation_date TEXT NOT NULL,
+  reservation_time TEXT NOT NULL,
+  table_id INTEGER REFERENCES restaurant_tables(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'seated', 'cancelled', 'no_show')),
+  notes TEXT NOT NULL DEFAULT '',
+  created_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS reservations_date_idx ON reservations(reservation_date, reservation_time);
+
+CREATE TABLE IF NOT EXISTS waitlist_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  party_size INTEGER NOT NULL CHECK (party_size BETWEEN 1 AND 50),
+  quoted_minutes INTEGER NOT NULL DEFAULT 0 CHECK (quoted_minutes >= 0),
+  status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'seated', 'cancelled')),
+  notes TEXT NOT NULL DEFAULT '',
+  created_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  seated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS waitlist_status_idx ON waitlist_entries(status, created_at);
+
 CREATE TABLE IF NOT EXISTS payments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,

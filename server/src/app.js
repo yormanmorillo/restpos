@@ -50,6 +50,10 @@ import {
   kitchenStationUpdateSchema,
   customerCreateSchema,
   customerUpdateSchema,
+  reservationCreateSchema,
+  reservationUpdateSchema,
+  waitlistCreateSchema,
+  waitlistUpdateSchema,
   orderListQuerySchema,
   dateQuerySchema,
   categoryCreateSchema,
@@ -90,6 +94,7 @@ import { requireFeature } from './features.js';
 import { createOrderSplits, clearOrderSplits } from './splits.js';
 import { moveOrderToTable, mergeOrders, transferItems } from './table-ops.js';
 import { createOfflineSale } from './offline.js';
+import { listReservations, createReservation, updateReservation, listWaitlist, createWaitlistEntry, updateWaitlistEntry } from './reservations.js';
 import { listCustomers, getCustomer, createCustomer, updateCustomer } from './customers.js';
 import { serializeProduct } from './serializers.js';
 import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
@@ -166,6 +171,36 @@ export function createApp({ db, config }) {
 
   api.get('/features', (req, res) => {
     res.json({ features: safeFeatures(db) });
+  });
+
+  api.get('/reservations', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    res.json({ reservations: listReservations(db, { date: req.query.date ?? null, status: req.query.status ?? null }) });
+  });
+
+  api.post('/reservations', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const input = parseOrThrow(reservationCreateSchema, req.body);
+    res.status(201).json({ reservation: createReservation(db, input, req.staff.id) });
+  });
+
+  api.patch('/reservations/:id', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(reservationUpdateSchema, req.body);
+    res.json({ reservation: updateReservation(db, id, input, req.staff.id) });
+  });
+
+  api.get('/waitlist', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    res.json({ entries: listWaitlist(db, { status: req.query.status ?? 'waiting' }) });
+  });
+
+  api.post('/waitlist', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const input = parseOrThrow(waitlistCreateSchema, req.body);
+    res.status(201).json({ entry: createWaitlistEntry(db, input, req.staff.id) });
+  });
+
+  api.patch('/waitlist/:id', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(waitlistUpdateSchema, req.body);
+    res.json({ entry: updateWaitlistEntry(db, id, input.status, req.staff.id) });
   });
 
   api.get('/customers', requireFeature(db, 'customers_loyalty'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {

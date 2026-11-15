@@ -14,6 +14,7 @@ const TABS = [
   { href: '/admin/inventario', label: 'Inventario', icon: 'box', feature: 'inventory' },
   { href: '/admin/pagos', label: 'Pagos', icon: 'card' },
   { href: '/admin/clientes', label: 'Clientes', icon: 'users', feature: 'customers_loyalty' },
+  { href: '/admin/reservas', label: 'Reservas', icon: 'clock', feature: 'reservations' },
   { href: '/admin/equipo', label: 'Equipo', icon: 'users', adminOnly: true },
   { href: '/admin/ajustes', label: 'Ajustes', icon: 'settings' },
 ];

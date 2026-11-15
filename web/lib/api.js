@@ -82,6 +82,12 @@ export const api = {
 
   getFeatures: () => request('/features'),
   getCatalog: () => request('/catalog'),
+  getReservations: (date) => request(`/reservations${queryString({ date })}`),
+  createReservation: (body) => request('/reservations', { method: 'POST', body }),
+  updateReservation: (id, body) => request(`/reservations/${id}`, { method: 'PATCH', body }),
+  getWaitlist: () => request('/waitlist'),
+  createWaitlistEntry: (body) => request('/waitlist', { method: 'POST', body }),
+  updateWaitlistEntry: (id, status) => request(`/waitlist/${id}`, { method: 'PATCH', body: { status } }),
   getCustomers: (query) => request(`/customers${queryString({ q: query })}`),
   getCustomer: (id) => request(`/customers/${id}`),
   createCustomer: (body) => request('/customers', { method: 'POST', body }),
