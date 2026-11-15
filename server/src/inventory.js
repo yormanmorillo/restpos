@@ -219,6 +219,7 @@ export function consumeInventoryForOrder(db, orderId, staffId, now = new Date().
   const recipeStatement = db.prepare(`
     SELECT inventory_item_id, quantity_milli FROM product_ingredients WHERE product_id = ?
   `);
+  const comboStatement = db.prepare('SELECT component_product_id, quantity FROM combo_items WHERE combo_product_id = ?');
   const order = db.prepare('SELECT order_number FROM orders WHERE id = ?').get(orderId);
   const update = db.prepare('UPDATE inventory_items SET current_milli = current_milli - ?, updated_at = ? WHERE id = ?');
   const movement = db.prepare(`
@@ -226,18 +227,26 @@ export function consumeInventoryForOrder(db, orderId, staffId, now = new Date().
     VALUES (?, 'consumption', ?, ?, ?, ?, ?, ?)
   `);
   for (const line of items) {
-    const recipe = recipeStatement.all(line.product_id);
-    for (const ingredient of recipe) {
-      const consumed = Number(ingredient.quantity_milli) * Number(line.quantity);
-      update.run(consumed, now, ingredient.inventory_item_id);
-      movement.run(ingredient.inventory_item_id, -consumed, order?.order_number ?? `Pedido ${orderId}`, 'Consumo por venta', orderId, staffId, now);
+    const product = db.prepare('SELECT is_combo FROM products WHERE id = ?').get(line.product_id);
+    const components = product?.is_combo ? comboStatement.all(line.product_id) : [{ component_product_id: line.product_id, quantity: 1 }];
+    for (const component of components) {
+      const recipe = recipeStatement.all(component.component_product_id);
+      for (const ingredient of recipe) {
+        const consumed = Number(ingredient.quantity_milli) * Number(component.quantity) * Number(line.quantity);
+        update.run(consumed, now, ingredient.inventory_item_id);
+        movement.run(ingredient.inventory_item_id, -consumed, order?.order_number ?? `Pedido ${orderId}`, 'Consumo por venta', orderId, staffId, now);
+      }
     }
   }
 }
 
 export function productStockAvailability(db, productIds) {
-  const ids = [...new Set((productIds ?? []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
-  if (ids.length === 0) return new Map();
+  const requested = [...new Set((productIds ?? []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (requested.length === 0) return new Map();
+  const componentRows = requested.length
+    ? db.prepare(`SELECT combo_product_id, component_product_id, quantity FROM combo_items WHERE combo_product_id IN (${requested.map(() => '?').join(',')})`).all(...requested)
+    : [];
+  const ids = [...new Set([...requested, ...componentRows.map((row) => Number(row.component_product_id))])];
   const placeholders = ids.map(() => '?').join(',');
   const rows = db.prepare(`
     SELECT pi.product_id, pi.quantity_milli, ii.current_milli
@@ -255,6 +264,23 @@ export function productStockAvailability(db, productIds) {
   }
   for (const entry of result.values()) {
     if (entry.hasRecipe) entry.soldOut = entry.availableUnits <= 0;
+  }
+  const byCombo = new Map();
+  for (const row of componentRows) {
+    if (!byCombo.has(Number(row.combo_product_id))) byCombo.set(Number(row.combo_product_id), []);
+    byCombo.get(Number(row.combo_product_id)).push(row);
+  }
+  for (const [comboId, components] of byCombo) {
+    const entry = result.get(comboId);
+    if (!entry) continue;
+    entry.hasRecipe = true;
+    let units = Infinity;
+    for (const component of components) {
+      const componentEntry = result.get(Number(component.component_product_id));
+      if (componentEntry?.hasRecipe) units = Math.min(units, Math.floor(Number(componentEntry.availableUnits ?? 0) / Number(component.quantity)));
+    }
+    entry.availableUnits = units === Infinity ? null : units;
+    entry.soldOut = units !== Infinity && units <= 0;
   }
   return result;
 }

@@ -24,6 +24,7 @@ export function serializeProduct(row) {
     stationId: row.station_id === null || row.station_id === undefined ? null : Number(row.station_id),
     stationName: row.station_name ?? null,
     prepSeconds: Number(row.prep_seconds ?? 0),
+    isCombo: Boolean(row.is_combo),
     imageUrl: row.image_path ? `/api/public/product-images/${row.image_path}` : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

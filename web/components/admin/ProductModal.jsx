@@ -13,7 +13,7 @@ function messageFromError(error) {
   return error?.message || 'No se pudo guardar el producto.';
 }
 
-export default function ProductModal({ open, product, categories, stations = [], onClose, onSubmit }) {
+export default function ProductModal({ open, product, categories, stations = [], products = [], allowCombos = false, onClose, onSubmit }) {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
@@ -21,6 +21,8 @@ export default function ProductModal({ open, product, categories, stations = [],
   const [sortOrder, setSortOrder] = useState('0');
   const [stationId, setStationId] = useState('');
   const [prepMinutes, setPrepMinutes] = useState('0');
+  const [isCombo, setIsCombo] = useState(false);
+  const [comboItems, setComboItems] = useState([]);
   const [active, setActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -38,6 +40,8 @@ export default function ProductModal({ open, product, categories, stations = [],
     setSortOrder(String(product?.sortOrder ?? 0));
     setStationId(String(product?.stationId ?? ''));
     setPrepMinutes(String(Math.round((product?.prepSeconds ?? 0) / 60)));
+    setIsCombo(Boolean(product?.isCombo));
+    setComboItems((product?.comboItems ?? []).map((item) => ({ ...item })));
     setActive(product?.active ?? true);
     setSubmitting(false);
     setError('');
@@ -102,6 +106,8 @@ export default function ProductModal({ open, product, categories, stations = [],
         sortOrder: orderNumber,
         stationId: stationId ? Number(stationId) : null,
         prepSeconds: Math.max(0, Number(prepMinutes) || 0) * 60,
+        isCombo,
+        comboItems: isCombo ? comboItems.filter((item) => item.quantity > 0).map((item) => ({ productId: item.productId, quantity: Number(item.quantity) })) : [],
         active,
       }, { imageFile, removeImage });
       onClose();
@@ -218,6 +224,24 @@ export default function ProductModal({ open, product, categories, stations = [],
               <input className="input" type="number" min={0} max={120} value={prepMinutes} onChange={(event) => setPrepMinutes(event.target.value)} />
             </label>
           </>
+        ) : null}
+
+        {allowCombos ? <label className="toggle-row field field-full"><input type="checkbox" checked={isCombo} onChange={(event) => setIsCombo(event.target.checked)} /><span className="toggle-track" aria-hidden="true"><span /></span><span><strong>Es un combo</strong><small className="field-hint">Precio especial por varios productos.</small></span></label> : null}
+        {allowCombos && isCombo ? (
+          <div className="field field-full combo-builder">
+            <span className="field-label">Productos incluidos</span>
+            <div className="combo-builder-list">
+              {products.filter((entry) => !entry.isCombo && entry.id !== product?.id).map((entry) => {
+                const selected = comboItems.find((item) => item.productId === entry.id);
+                return (
+                  <div key={entry.id} className="combo-builder-row">
+                    <label><input type="checkbox" checked={Boolean(selected)} onChange={(event) => setComboItems((previous) => event.target.checked ? [...previous, { productId: entry.id, name: entry.name, quantity: 1 }] : previous.filter((item) => item.productId !== entry.id))} /> {entry.name}</label>
+                    <input className="input input-tiny" type="number" min={1} max={99} value={selected?.quantity ?? 1} disabled={!selected} onChange={(event) => setComboItems((previous) => previous.map((item) => item.productId === entry.id ? { ...item, quantity: Number(event.target.value) } : item))} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ) : null}
 
         <label className="field field-full">

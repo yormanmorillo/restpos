@@ -468,6 +468,8 @@ export default function AdminPage() {
         product={productModal.product}
         categories={categories}
         stations={stations}
+        products={products}
+        allowCombos={enabled('combos')}
         onClose={() => setProductModal({ open: false, product: null })}
         onSubmit={saveProduct}
       />

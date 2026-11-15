@@ -5810,3 +5810,9 @@ h1 { font-weight: 700; }
 .promo-row strong { font-size: 0.76rem; }
 .promo-row span { color: var(--ink-faint); font-size: 0.63rem; }
 @media (max-width: 900px) { .promo-layout { grid-template-columns: 1fr; } }
+
+.combo-builder { border: 1px solid var(--border); border-radius: 8px; padding: 9px; }
+.combo-builder-list { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow: auto; }
+.combo-builder-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.72rem; }
+.combo-builder-row label { display: flex; align-items: center; gap: 6px; }
+.input.input-tiny { width: 58px; min-height: 27px; padding: 3px 5px; }

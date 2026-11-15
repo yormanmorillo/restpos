@@ -7,6 +7,7 @@ export function getCatalog(db, config) {
   const categories = db
     .prepare('SELECT * FROM categories WHERE active = 1 ORDER BY sort_order, name')
     .all();
+  const comboEnabled = featureEnabled(db, 'combos');
   const products = db
     .prepare(`
       SELECT p.*, c.name AS category_name
@@ -15,7 +16,8 @@ export function getCatalog(db, config) {
       WHERE c.active = 1
       ORDER BY c.sort_order, p.sort_order, p.name
     `)
-    .all();
+    .all()
+    .filter((product) => comboEnabled || !product.is_combo);
   const modifierGroups = getProductModifierGroups(
     db,
     products.map((product) => Number(product.id)),

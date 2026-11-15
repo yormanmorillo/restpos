@@ -316,6 +316,8 @@ export const productCreateSchema = z.object({
   categoryId: z.number().int().positive('Selecciona una categoría válida.'),
   stationId: z.number().int().positive().nullable().optional(),
   prepSeconds: z.number().int().min(0).max(7200).optional().default(0),
+  isCombo: z.boolean().optional().default(false),
+  comboItems: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().min(1).max(99) })).max(20).optional().default([]),
   name: z.string().trim().min(1, 'El nombre del producto es obligatorio.').max(80, 'El nombre no puede exceder 80 caracteres.'),
   description: text(300, 'La descripción').optional().default(''),
   priceCents: moneyCents,
@@ -331,6 +333,8 @@ export const productUpdateSchema = z
     priceCents: moneyCents.optional(),
     stationId: z.number().int().positive().nullable().optional(),
     prepSeconds: z.number().int().min(0).max(7200).optional(),
+    isCombo: z.boolean().optional(),
+    comboItems: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().min(1).max(99) })).max(20).optional(),
     sortOrder: z.number().int('El orden debe ser un entero.').min(-9999).max(9999).optional(),
     active: z.boolean().optional(),
   })

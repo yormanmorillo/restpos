@@ -77,6 +77,12 @@ export const FEATURES = {
     phase: 2,
     defaultEnabled: false,
   },
+  combos: {
+    label: 'Combos',
+    description: 'Paquetes de varios productos con precio especial y control de inventario.',
+    phase: 2,
+    defaultEnabled: false,
+  },
   loyalty_redemption: {
     label: 'Canje de puntos',
     description: 'Permite pagar parte de la cuenta con puntos de fidelidad.',

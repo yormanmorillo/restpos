@@ -81,7 +81,7 @@ export function updateCategory(db, id, input) {
   for (const [key, column] of mapping) {
     if (input[key] !== undefined) {
       fields.push(`${column} = ?`);
-      params.push(key === 'active' ? (input[key] ? 1 : 0) : input[key]);
+      params.push(['active', 'isCombo'].includes(key) ? (input[key] ? 1 : 0) : input[key]);
     }
   }
   if (fields.length === 0) throw validationError('No hay cambios para guardar.');
@@ -101,9 +101,19 @@ export function listAdminProducts(db) {
     `)
     .all();
   const assignments = getProductModifierGroups(db, rows.map((row) => Number(row.id)));
+  const comboRows = db.prepare(`
+    SELECT ci.combo_product_id, ci.component_product_id, ci.quantity, p.name
+    FROM combo_items ci JOIN products p ON p.id = ci.component_product_id
+  `).all();
+  const comboMap = new Map();
+  for (const row of comboRows) {
+    if (!comboMap.has(Number(row.combo_product_id))) comboMap.set(Number(row.combo_product_id), []);
+    comboMap.get(Number(row.combo_product_id)).push({ productId: Number(row.component_product_id), name: row.name, quantity: Number(row.quantity) });
+  }
   return rows.map((row) => ({
     ...serializeProduct(row),
     modifierGroupIds: (assignments.get(Number(row.id)) ?? []).map((group) => group.id),
+    comboItems: comboMap.get(Number(row.id)) ?? [],
   }));
 }
 
@@ -114,8 +124,8 @@ export function createProduct(db, input) {
   const result = db
     .prepare(`
       INSERT INTO products
-        (category_id, name, description, price_cents, station_id, prep_seconds, active, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (category_id, name, description, price_cents, station_id, prep_seconds, is_combo, active, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       input.categoryId,
@@ -124,12 +134,15 @@ export function createProduct(db, input) {
       input.priceCents,
       input.stationId ?? null,
       input.prepSeconds ?? 0,
+      input.isCombo ? 1 : 0,
       input.active === false ? 0 : 1,
       input.sortOrder ?? 0,
       timestamp,
       timestamp,
     );
-  return serializeProduct(loadProduct(db, Number(result.lastInsertRowid)));
+  const productId = Number(result.lastInsertRowid);
+  saveComboItems(db, productId, input);
+  return { ...serializeProduct(loadProduct(db, productId)), comboItems: listComboItems(db, productId) };
 }
 
 export function updateProduct(db, id, input) {
@@ -154,18 +167,38 @@ export function updateProduct(db, id, input) {
     ['priceCents', 'price_cents'],
     ['stationId', 'station_id'],
     ['prepSeconds', 'prep_seconds'],
+    ['isCombo', 'is_combo'],
     ['sortOrder', 'sort_order'],
     ['active', 'active'],
   ];
   for (const [key, column] of mapping) {
     if (input[key] !== undefined) {
       fields.push(`${column} = ?`);
-      params.push(key === 'active' ? (input[key] ? 1 : 0) : input[key]);
+      params.push(['active', 'isCombo'].includes(key) ? (input[key] ? 1 : 0) : input[key]);
     }
   }
   if (fields.length === 0) throw validationError('No hay cambios para guardar.');
   fields.push('updated_at = ?');
   params.push(nowIso(), id);
   db.prepare(`UPDATE products SET ${fields.join(', ')} WHERE id = ?`).run(...params);
-  return serializeProduct(loadProduct(db, id));
+  if (input.isCombo !== undefined || input.comboItems !== undefined) saveComboItems(db, id, input);
+  return { ...serializeProduct(loadProduct(db, id)), comboItems: listComboItems(db, id) };
+}
+
+
+function listComboItems(db, productId) {
+  return db.prepare(`SELECT ci.component_product_id, ci.quantity, p.name FROM combo_items ci JOIN products p ON p.id = ci.component_product_id WHERE ci.combo_product_id = ? ORDER BY p.name`).all(productId).map((row) => ({ productId: Number(row.component_product_id), name: row.name, quantity: Number(row.quantity) }));
+}
+
+function saveComboItems(db, productId, input) {
+  const combo = input.isCombo === true || (input.isCombo === undefined && db.prepare('SELECT is_combo FROM products WHERE id = ?').get(productId)?.is_combo === 1);
+  db.prepare('DELETE FROM combo_items WHERE combo_product_id = ?').run(productId);
+  if (!combo || !Array.isArray(input.comboItems) || input.comboItems.length === 0) return;
+  for (const item of input.comboItems) {
+    if (Number(item.productId) === Number(productId)) throw validationError('Un combo no puede incluirse a sí mismo.');
+    const component = db.prepare('SELECT id, is_combo FROM products WHERE id = ?').get(item.productId);
+    if (!component) throw validationError('Uno de los componentes del combo no existe.');
+    if (component.is_combo) throw validationError('Un combo no puede incluir otro combo.');
+    db.prepare('INSERT OR REPLACE INTO combo_items (combo_product_id, component_product_id, quantity) VALUES (?, ?, ?)').run(productId, item.productId, item.quantity);
+  }
 }

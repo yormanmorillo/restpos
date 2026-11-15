@@ -399,6 +399,15 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
 );
 CREATE INDEX IF NOT EXISTS inventory_movements_item_idx ON inventory_movements(item_id, created_at);
 
+CREATE TABLE IF NOT EXISTS combo_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  combo_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  component_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity BETWEEN 1 AND 99),
+  UNIQUE (combo_product_id, component_product_id)
+);
+CREATE INDEX IF NOT EXISTS combo_items_combo_idx ON combo_items(combo_product_id);
+
 CREATE TABLE IF NOT EXISTS product_ingredients (
   product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   inventory_item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
@@ -661,6 +670,7 @@ export function migrate(db) {
   ensureColumn(db, 'products', 'image_path', 'TEXT');
   ensureColumn(db, 'products', 'station_id', 'INTEGER REFERENCES kitchen_stations(id)');
   ensureColumn(db, 'products', 'prep_seconds', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'products', 'is_combo', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'payments', 'method_kind', "TEXT NOT NULL DEFAULT 'other'");
   ensureColumn(db, 'payments', 'split_id', 'INTEGER REFERENCES order_splits(id)');
