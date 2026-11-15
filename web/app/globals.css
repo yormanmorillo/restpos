@@ -5658,3 +5658,35 @@ h1 { font-weight: 700; }
 .feature-flag-control input:checked + .toggle-track { background: var(--ink); }
 .feature-flag-control input:checked + .toggle-track > span { transform: translateX(18px); }
 .feature-toast { margin: 0; color: var(--green); font-size: 0.72rem; font-weight: 650; }
+.status-pill.is-refunded { display: inline-flex; align-items: center; margin-right: 5px; padding: 3px 6px; border-radius: 5px; background: var(--surface-strong); color: var(--ink-soft); font-size: 0.6rem; font-weight: 700; }
+
+/* Dividir cuenta */
+.split-count-options { margin-bottom: 10px; }
+.split-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 7px; margin-bottom: 10px; }
+.split-part-name { margin: 0; }
+.split-item-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.split-item-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+.split-item-row:last-child { border-bottom: 0; }
+.split-item-row > div { display: flex; flex-direction: column; gap: 2px; }
+.split-item-row strong { font-size: 0.76rem; }
+.split-item-row span { color: var(--ink-faint); font-size: 0.66rem; }
+.split-item-select { max-width: 160px; min-height: 34px; }
+.split-summary { display: flex; flex-direction: column; gap: 5px; margin: 8px 20px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.split-summary-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.7rem; }
+.split-summary-head span { color: var(--ink-faint); }
+.split-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px dashed var(--border); }
+.split-row > div { display: flex; flex-direction: column; gap: 1px; }
+.split-row strong { font-size: 0.75rem; }
+.split-row span { color: var(--ink-faint); font-size: 0.63rem; }
+.split-row.is-paid { opacity: 0.7; }
+
+/* Mover / unir */
+.table-ops { display: flex; flex-direction: column; gap: 18px; }
+.table-ops section { display: flex; flex-direction: column; gap: 8px; }
+.table-ops h3 { font-size: 0.86rem; }
+.table-op-order-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.table-op-order-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.table-op-order-row:last-child { border-bottom: 0; }
+.table-op-order-row > div { display: flex; flex-direction: column; gap: 1px; }
+.table-op-order-row strong { font-size: 0.75rem; }
+.table-op-order-row span { color: var(--ink-faint); font-size: 0.63rem; }

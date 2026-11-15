@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
+import Modal from '@/components/Modal';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { useFeatures } from '@/components/FeatureProvider';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { api } from '@/lib/api';
 import {
@@ -58,6 +61,9 @@ function HistorySkeleton() {
 }
 
 export default function HistoryPage() {
+  const { staff } = useAuth();
+  const { enabled } = useFeatures();
+  const canRefund = enabled('refunds') && ['owner', 'admin', 'manager'].includes(staff?.role);
   const [report, setReport] = useState(null);
   const [orders, setOrders] = useState([]);
   const [date, setDate] = useState('');
@@ -65,6 +71,12 @@ export default function HistoryPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const requestRef = useRef(0);
+  const [refundTarget, setRefundTarget] = useState(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundPin, setRefundPin] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundError, setRefundError] = useState('');
+  const [refundNotice, setRefundNotice] = useState('');
 
   const loadDay = useCallback(async (requestedDate) => {
     const requestId = ++requestRef.current;
@@ -115,6 +127,27 @@ export default function HistoryPage() {
 
   const topQuantity = report?.topProducts?.[0]?.quantity ?? 0;
 
+  async function submitRefund() {
+    if (!refundTarget) return;
+    if (refundReason.trim().length < 3) { setRefundError('Indica el motivo del reembolso.'); return; }
+    if (!/^\d{6}$/.test(refundPin)) { setRefundError('El PIN del gerente debe tener 6 dígitos.'); return; }
+    setRefundBusy(true);
+    setRefundError('');
+    try {
+      await api.refundOrder(refundTarget.id, { reason: refundReason.trim(), managerPin: refundPin });
+      setRefundTarget(null);
+      setRefundReason('');
+      setRefundPin('');
+      setRefundNotice(`Pedido ${refundTarget.orderNumber} reembolsado.`);
+      window.setTimeout(() => setRefundNotice(''), 4000);
+      await loadDay(date);
+    } catch (refundFailure) {
+      setRefundError(refundFailure.message || 'No se pudo registrar el reembolso.');
+    } finally {
+      setRefundBusy(false);
+    }
+  }
+
   return (
     <div className="history-page">
       <div className="page-heading history-heading">
@@ -164,6 +197,7 @@ export default function HistoryPage() {
         </div>
       ) : null}
 
+      {refundNotice ? <div className="alert alert-success"><Icon name="check" size={18} /><p>{refundNotice}</p></div> : null}
       {loading && !report ? (
         <HistorySkeleton />
       ) : report ? (
@@ -395,7 +429,13 @@ export default function HistoryPage() {
                         </td>
                         <td className="align-right amount-cell">{formatMoney(order.totalCents)}</td>
                         <td className="align-right">
+                          {order.refundedAt ? <span className="status-pill is-refunded">Reembolsado</span> : null}
                           {order.status === 'pagada' ? <ShareWhatsAppButton orderId={order.id} compact className="icon-button table-link" /> : null}
+                          {canRefund && order.status === 'pagada' && !order.refundedAt ? (
+                            <button type="button" className="icon-button table-link" title="Reembolsar pedido" aria-label={`Reembolsar ${order.orderNumber}`} onClick={() => { setRefundTarget(order); setRefundReason(''); setRefundPin(''); setRefundError(''); }}>
+                              <Icon name="cash" size={18} />
+                            </button>
+                          ) : null}
                           <a
                             className="icon-button table-link"
                             href={`/recibo/${order.id}`}
@@ -432,6 +472,37 @@ export default function HistoryPage() {
           </button>
         </div>
       )}
+      <Modal
+        open={Boolean(refundTarget)}
+        onClose={() => setRefundTarget(null)}
+        title="Reembolsar pedido"
+        subtitle={refundTarget ? `${refundTarget.orderNumber} · ${formatMoney(refundTarget.totalCents)}` : ''}
+        size="sm"
+        closeDisabled={refundBusy}
+        footer={
+          <div className="modal-actions">
+            <span />
+            <div className="modal-actions-right">
+              <button type="button" className="btn btn-secondary" onClick={() => setRefundTarget(null)} disabled={refundBusy}>Cancelar</button>
+              <button type="button" className="btn btn-danger" onClick={() => void submitRefund()} disabled={refundBusy}>
+                {refundBusy ? <span className="spinner spinner-small" /> : <Icon name="cash" size={18} />}
+                Reembolsar
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <p className="confirm-copy">Se devolverá el total cobrado, se revertirá el inventario y se ajustará el efectivo esperado del turno. La acción queda en auditoría.</p>
+        <label className="field">
+          <span className="field-label">Motivo</span>
+          <textarea className="input" rows={2} maxLength={300} value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Ej. cargo duplicado, pedido incorrecto…" autoFocus />
+        </label>
+        <label className="field">
+          <span className="field-label">PIN de gerente</span>
+          <input className="input" type="password" inputMode="numeric" maxLength={6} value={refundPin} onChange={(event) => setRefundPin(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 dígitos" />
+        </label>
+        {refundError ? <p className="form-error">{refundError}</p> : null}
+      </Modal>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
         COALESCE(SUM(delivery_fee_cents), 0) AS delivery_fees_cents,
         COALESCE(SUM(total_cents), 0) AS total_cents
       FROM orders
-      WHERE status = 'pagada' AND business_date = ?
+      WHERE status = 'pagada' AND refunded_at IS NULL AND business_date = ?
     `)
     .get(reportDate);
 
@@ -35,7 +35,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
              COALESCE(SUM(p.amount_cents), 0) AS total_cents
       FROM payments p
       JOIN orders o ON o.id = p.order_id
-      WHERE o.status = 'pagada' AND o.business_date = ?
+      WHERE o.status = 'pagada' AND o.refunded_at IS NULL AND o.business_date = ?
       GROUP BY p.payment_method, p.method_name, p.method_kind
       ORDER BY MIN(p.id)
     `)
@@ -69,7 +69,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
              SUM(oi.line_total_cents) AS revenue_cents
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
-      WHERE o.status = 'pagada' AND o.business_date = ?
+      WHERE o.status = 'pagada' AND o.refunded_at IS NULL AND o.business_date = ?
       GROUP BY oi.product_name
       ORDER BY quantity DESC, revenue_cents DESC, oi.product_name ASC
       LIMIT 10
@@ -90,7 +90,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
       JOIN orders o ON o.id = oi.order_id
       LEFT JOIN products p ON p.id = oi.product_id
       LEFT JOIN categories c ON c.id = p.category_id
-      WHERE o.status = 'pagada' AND o.business_date = ?
+      WHERE o.status = 'pagada' AND o.refunded_at IS NULL AND o.business_date = ?
       GROUP BY c.id
       ORDER BY revenue_cents DESC, name ASC
     `)
@@ -109,7 +109,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
              COALESCE(SUM(o.tip_cents), 0) AS tip_cents
       FROM orders o
       LEFT JOIN staff st ON st.id = o.opened_by_staff_id
-      WHERE o.status = 'pagada' AND o.business_date = ?
+      WHERE o.status = 'pagada' AND o.refunded_at IS NULL AND o.business_date = ?
       GROUP BY st.id
       ORDER BY sales_cents DESC, staff_name ASC
     `)
@@ -126,7 +126,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
     .prepare(`
       SELECT id, paid_at, created_at, total_cents, tip_cents
       FROM orders
-      WHERE status = 'pagada' AND business_date = ?
+      WHERE status = 'pagada' AND refunded_at IS NULL AND business_date = ?
       ORDER BY paid_at
     `)
     .all(reportDate);

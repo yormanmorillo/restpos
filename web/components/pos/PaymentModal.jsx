@@ -27,7 +27,10 @@ function methodIcon(method) {
   return method?.icon || (method?.kind === 'cash' ? 'cash' : method?.kind === 'card' ? 'card' : 'wallet');
 }
 
-export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm, onRefresh }) {
+export default function PaymentModal({ open, onClose, order, split = null, onSetTip, onConfirm, onRefresh }) {
+  const paymentOrder = split
+    ? { ...order, items: split.items, totalCents: split.totalCents, amountPaidCents: split.amountPaidCents, payments: (order.payments ?? []).filter((payment) => Number(payment.splitId) === Number(split.id)) }
+    : order;
   const [methods, setMethods] = useState([]);
   const [methodsLoading, setMethodsLoading] = useState(false);
   const [methodsError, setMethodsError] = useState('');
@@ -47,8 +50,8 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
   const [shiftLoading, setShiftLoading] = useState(false);
   const [shiftError, setShiftError] = useState('');
 
-  const paidCents = Number(order.amountPaidCents ?? 0);
-  const balanceCents = Math.max(0, Number(order.totalCents) - paidCents);
+  const paidCents = Number(paymentOrder.amountPaidCents ?? 0);
+  const balanceCents = Math.max(0, Number(paymentOrder.totalCents) - paidCents);
   const locked = paidCents > 0;
   const selectedMethod = methods.find((method) => method.code === methodCode) ?? null;
   const isCash = selectedMethod?.kind === 'cash';
@@ -58,7 +61,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     setMethodCode('');
     setAmountInput(centsToInput(balanceCents));
     setCashInput(centsToInput(balanceCents));
-    setCustomTip(order.tipType === 'fixed' ? centsToInput(order.tipValue) : '');
+    setCustomTip(paymentOrder.tipType === 'fixed' ? centsToInput(paymentOrder.tipValue) : '');
     setTipError('');
     setError('');
     setPaying(false);
@@ -89,7 +92,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     setAmountInput(centsToInput(balanceCents));
     setCashInput(centsToInput(balanceCents));
     setError('');
-  }, [open, balanceCents, order.totalCents]);
+  }, [open, balanceCents, paymentOrder.totalCents]);
 
   const amountCents = useMemo(() => {
     try { return parseMoneyToCents(amountInput); } catch { return null; }
@@ -118,8 +121,9 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     ? calculateChange(amountCents, receivedCents)
     : null;
   const suggestions = useMemo(() => getSuggestedCashAmounts(amountCents ?? 0).slice(0, 5), [amountCents]);
-  const activePercentTip = order.tipType === 'percent' ? order.tipValue : null;
-  const payments = order.payments ?? [];
+  const activePercentTip = paymentOrder.tipType === 'percent' ? paymentOrder.tipValue : null;
+  const payments = paymentOrder.payments ?? [];
+  const splitSubtotal = split ? split.items.reduce((sum, item) => sum + item.lineTotalCents, 0) : null;
 
   function useSplit(parts) {
     if (!Number.isInteger(parts) || parts < 2) return;
@@ -177,6 +181,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
         amountCents,
         ...(isCash ? { cashReceivedCents: receivedCents } : {}),
         photos: selectedMethod.allowsPhoto ? photoFiles : [],
+        ...(split ? { splitId: split.id } : {}),
       });
       setPhotoFiles([]);
       if (updated?.status === 'abierta') {
@@ -196,14 +201,14 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
     <Modal
       open={open}
       onClose={onClose}
-      title={paidCents > 0 ? 'Cobrar saldo' : 'Cobrar pedido'}
-      subtitle={`${serviceLabel(order)} · ${order.orderNumber}`}
+      title={split ? 'Cobrar parte' : paidCents > 0 ? 'Cobrar saldo' : 'Cobrar pedido'}
+      subtitle={split ? `${split.label} · ${order.orderNumber}` : `${serviceLabel(order)} · ${order.orderNumber}`}
       size="lg"
       closeDisabled={paying}
       footer={
         <div className="payment-footer">
           <div>
-            <span>{paidCents > 0 ? 'Saldo pendiente' : 'Total a cobrar'}</span>
+            <span>{split ? 'Saldo de esta parte' : paidCents > 0 ? 'Saldo pendiente' : 'Total a cobrar'}</span>
             <strong>{formatMoney(balanceCents)}</strong>
           </div>
           <button type="button" className="btn btn-primary btn-charge-confirm" onClick={() => void submit()} disabled={!canConfirm}>
@@ -238,7 +243,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
           {paidCents > 0 ? (
             <div className="partial-banner">
               <Icon name="split" size={20} />
-              <div><strong>Pago parcial</strong><span>{formatMoney(paidCents)} pagados de {formatMoney(order.totalCents)}</span></div>
+              <div><strong>Pago parcial</strong><span>{formatMoney(paidCents)} pagados de {formatMoney(paymentOrder.totalCents)}</span></div>
             </div>
           ) : null}
 
@@ -371,6 +376,7 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
         </div>
 
         <aside className="payment-side">
+          {!split ? (
           <section className="payment-section">
             <div className="payment-section-row">
               <h3>Propina</h3>
@@ -419,13 +425,15 @@ export default function PaymentModal({ open, onClose, order, onSetTip, onConfirm
             ) : null}
           </section>
 
+          ) : null}
+
           <section className="payment-summary" aria-label="Resumen del cobro">
-            <div className="summary-row"><span>Subtotal</span><span>{formatMoney(order.subtotalCents)}</span></div>
-            {order.discountCents > 0 ? <div className="summary-row summary-discount"><span>Descuento</span><span>-{formatMoney(order.discountCents)}</span></div> : null}
-            <div className="summary-row"><span>Impuesto ({order.taxRateBps / 100}%)</span><span>{formatMoney(order.taxCents)}</span></div>
-            {order.deliveryFeeCents > 0 ? <div className="summary-row"><span>Costo de entrega</span><span>{formatMoney(order.deliveryFeeCents)}</span></div> : null}
-            <div className="summary-row"><span>Propina</span><span>{formatMoney(order.tipCents)}</span></div>
-            <div className="summary-row summary-total"><span>Total</span><strong>{formatMoney(order.totalCents)}</strong></div>
+            <div className="summary-row"><span>Subtotal</span><span>{formatMoney(split ? splitSubtotal : order.subtotalCents)}</span></div>
+            {!split && order.discountCents > 0 ? <div className="summary-row summary-discount"><span>Descuento</span><span>-{formatMoney(order.discountCents)}</span></div> : null}
+            <div className="summary-row"><span>Impuesto ({order.taxRateBps / 100}%)</span><span>{formatMoney(split ? Math.max(0, split.totalCents - splitSubtotal) : order.taxCents)}</span></div>
+            {!split && order.deliveryFeeCents > 0 ? <div className="summary-row"><span>Costo de entrega</span><span>{formatMoney(order.deliveryFeeCents)}</span></div> : null}
+            <div className="summary-row"><span>Propina</span><span>{formatMoney(split ? 0 : order.tipCents)}</span></div>
+            <div className="summary-row summary-total"><span>Total</span><strong>{formatMoney(paymentOrder.totalCents)}</strong></div>
             {paidCents > 0 ? <div className="summary-row summary-balance"><span>Saldo</span><span>{formatMoney(balanceCents)}</span></div> : null}
           </section>
 

@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TEXT NOT NULL,
   paid_at TEXT,
   cancelled_at TEXT,
+  refunded_at TEXT,
+  refund_cents INTEGER NOT NULL DEFAULT 0 CHECK (refund_cents >= 0),
+  refund_reason TEXT NOT NULL DEFAULT '',
   CHECK (
     (type = 'mesa' AND table_id IS NOT NULL) OR
     (type = 'llevar' AND table_id IS NULL)
@@ -80,6 +83,19 @@ CREATE INDEX IF NOT EXISTS orders_status_business_date_idx
   ON orders(status, business_date);
 CREATE INDEX IF NOT EXISTS orders_created_at_idx ON orders(created_at);
 
+CREATE TABLE IF NOT EXISTS order_splits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'paid')),
+  total_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_cents >= 0),
+  amount_paid_cents INTEGER NOT NULL DEFAULT 0 CHECK (amount_paid_cents >= 0),
+  created_at TEXT NOT NULL,
+  paid_at TEXT,
+  created_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS order_splits_order_idx ON order_splits(order_id);
+
 CREATE TABLE IF NOT EXISTS order_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -91,7 +107,8 @@ CREATE TABLE IF NOT EXISTS order_items (
   notes TEXT NOT NULL DEFAULT '',
   line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0),
   sort_order INTEGER NOT NULL DEFAULT 0,
-  sent_quantity INTEGER NOT NULL DEFAULT 0
+  sent_quantity INTEGER NOT NULL DEFAULT 0,
+  split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS order_items_client_key_unique
@@ -145,6 +162,7 @@ CREATE TABLE IF NOT EXISTS payments (
   payment_method TEXT NOT NULL,
   method_name TEXT NOT NULL DEFAULT '',
   method_kind TEXT NOT NULL DEFAULT 'other',
+  split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL,
   amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
@@ -152,6 +170,20 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_order_idx ON payments(order_id);
 CREATE INDEX IF NOT EXISTS payments_shift_idx ON payments(shift_id);
+
+CREATE TABLE IF NOT EXISTS refunds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  shift_id INTEGER REFERENCES shifts(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  authorized_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+  cash_cents INTEGER NOT NULL DEFAULT 0 CHECK (cash_cents >= 0),
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS refunds_order_idx ON refunds(order_id);
+CREATE INDEX IF NOT EXISTS refunds_shift_idx ON refunds(shift_id);
 
 CREATE TABLE IF NOT EXISTS payment_methods (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,6 +289,7 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
   cost_cents INTEGER NOT NULL DEFAULT 0,
   reference TEXT NOT NULL DEFAULT '',
   notes TEXT NOT NULL DEFAULT '',
+  order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
   staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL
 );
@@ -362,6 +395,9 @@ function rebuildLegacyPaymentTables(db) {
         updated_at TEXT NOT NULL,
         paid_at TEXT,
         cancelled_at TEXT,
+        refunded_at TEXT,
+        refund_cents INTEGER NOT NULL DEFAULT 0,
+        refund_reason TEXT NOT NULL DEFAULT '',
         delivery INTEGER NOT NULL DEFAULT 0 CHECK (delivery IN (0, 1)),
         customer_phone TEXT NOT NULL DEFAULT '',
         delivery_address TEXT NOT NULL DEFAULT '',
@@ -386,6 +422,7 @@ function rebuildLegacyPaymentTables(db) {
         tax_rate_bps, tax_cents, tip_type, tip_value, tip_cents, total_cents,
         payment_method, payment_method_name, cash_received_cents, change_cents,
         business_date, created_at, updated_at, paid_at, cancelled_at,
+        refunded_at, refund_cents, refund_reason,
         delivery, customer_phone, delivery_address, source, amount_paid_cents,
         opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
         scheduled_for, delivery_fee_cents, public_receipt_token
@@ -398,6 +435,7 @@ function rebuildLegacyPaymentTables(db) {
         COALESCE(payment_method_name, CASE payment_method WHEN 'efectivo' THEN 'Efectivo' WHEN 'tarjeta' THEN 'Tarjeta' ELSE '' END),
         cash_received_cents, change_cents,
         business_date, created_at, updated_at, paid_at, cancelled_at,
+        refunded_at, refund_cents, refund_reason,
         delivery, customer_phone, delivery_address, source, amount_paid_cents,
         opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
         scheduled_for, delivery_fee_cents, public_receipt_token
@@ -413,20 +451,21 @@ function rebuildLegacyPaymentTables(db) {
         payment_method TEXT NOT NULL,
         method_name TEXT NOT NULL DEFAULT '',
         method_kind TEXT NOT NULL DEFAULT 'other',
+        split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL,
         amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
         cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
         change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
         created_at TEXT NOT NULL
       );
       INSERT INTO payments_rebuild (
-        id, order_id, shift_id, staff_id, payment_method, method_name, method_kind,
+        id, order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id,
         amount_cents, cash_received_cents, change_cents, created_at
       )
       SELECT
         id, order_id, shift_id, staff_id, payment_method,
         CASE payment_method WHEN 'efectivo' THEN 'Efectivo' WHEN 'tarjeta' THEN 'Tarjeta' ELSE 'Otro' END,
         CASE payment_method WHEN 'efectivo' THEN 'cash' WHEN 'tarjeta' THEN 'card' ELSE 'other' END,
-        amount_cents, cash_received_cents, change_cents, created_at
+        split_id, amount_cents, cash_received_cents, change_cents, created_at
       FROM payments;
     `);
 
@@ -497,10 +536,14 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'payment_method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'public_receipt_token', 'TEXT');
   ensureColumn(db, 'orders', 'discount_reason', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'orders', 'refunded_at', 'TEXT');
+  ensureColumn(db, 'orders', 'refund_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'orders', 'refund_reason', "TEXT NOT NULL DEFAULT ''");
 
   ensureColumn(db, 'products', 'image_path', 'TEXT');
   ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'payments', 'method_kind', "TEXT NOT NULL DEFAULT 'other'");
+  ensureColumn(db, 'payments', 'split_id', 'INTEGER REFERENCES order_splits(id)');
 
   ensureColumn(db, 'order_items', 'status', "TEXT NOT NULL DEFAULT 'pending'");
   ensureColumn(db, 'order_items', 'course', 'INTEGER NOT NULL DEFAULT 1');
@@ -509,6 +552,8 @@ export function migrate(db) {
   ensureColumn(db, 'order_items', 'served_at', 'TEXT');
   ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'order_items', 'sent_quantity', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'order_items', 'split_id', 'INTEGER REFERENCES order_splits(id)');
+  ensureColumn(db, 'inventory_movements', 'order_id', 'INTEGER REFERENCES orders(id)');
   db.exec("UPDATE order_items SET sent_quantity = quantity WHERE status <> 'pending' AND sent_quantity = 0");
 
   rebuildStaffRoleTable(db);

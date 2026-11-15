@@ -87,7 +87,12 @@ export function getShiftSummary(db, shiftId) {
     db.prepare('SELECT COALESCE(SUM(tip_cents), 0) AS tip FROM orders WHERE shift_id = ? AND status = ?')
       .get(shiftId, 'pagada').tip,
   );
-  const expectedCents = Number(shift.opening_cents) + cashSalesCents;
+  const refunds = db
+    .prepare("SELECT COALESCE(SUM(amount_cents), 0) AS total, COALESCE(SUM(cash_cents), 0) AS cash FROM refunds WHERE shift_id = ?")
+    .get(shiftId);
+  const refundCents = Number(refunds.total);
+  const cashRefundCents = Number(refunds.cash);
+  const expectedCents = Number(shift.opening_cents) + cashSalesCents - cashRefundCents;
   return {
     shift: serializeShift(shift),
     totals: {
@@ -96,6 +101,8 @@ export function getShiftSummary(db, shiftId) {
       orderCount,
       paymentCount: counts.efectivo + counts.tarjeta + counts.otro,
       tipsCents,
+      refundCents,
+      cashRefundCents,
       expectedCents,
       cashSalesCents,
     },

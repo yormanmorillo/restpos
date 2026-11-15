@@ -235,6 +235,10 @@ SESSION_TTL_HOURS: "12"
 
 El frontend necesita `API_URL=http://api:4000` y `PORT=3000`.
 
+## Fase 1
+
+Las funciones `split_bill`, `refunds`, `table_transfer_merge` y `offline_mode` están apagadas por defecto. Actívalas desde **Ajustes → Funciones activables**. Los reembolsos requieren un PIN de gerente/admin/owner y un turno abierto si devuelven efectivo. El diseño de offline está en [OFFLINE-MODE.md](OFFLINE-MODE.md).
+
 ## Funciones activables
 
 El super admin activa o desactiva módulos desde **Administración → Ajustes → Funciones activables**. Las banderas se guardan en `settings` con el prefijo `feature_`. Los módulos existentes nacen activos; las funciones futuras nacen apagadas. Si se apaga una función, su API devuelve 404 y la interfaz oculta el acceso.

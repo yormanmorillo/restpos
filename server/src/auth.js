@@ -412,6 +412,13 @@ export function updateStaff(db, id, input, actorId, actorRole = null, now = new 
   return serializeStaff(db.prepare('SELECT * FROM staff WHERE id = ?').get(id));
 }
 
+export function findManagerByPin(db, pin) {
+  const managers = db
+    .prepare("SELECT * FROM staff WHERE active = 1 AND role IN ('owner', 'admin', 'manager') ORDER BY CASE role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END, id")
+    .all();
+  return managers.find((row) => verifyPin(String(pin ?? ''), row.pin_hash)) ?? null;
+}
+
 export function listStaff(db) {
   return db
     .prepare('SELECT * FROM staff ORDER BY active DESC, name')

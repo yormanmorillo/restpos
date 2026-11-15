@@ -137,11 +137,32 @@ export const draftSchema = z
     }
   });
 
+export const moveTableSchema = z.object({
+  tableId: z.number().int().positive('Selecciona una mesa válida.'),
+});
+
+export const mergeOrderSchema = z.object({
+  sourceOrderId: z.number().int().positive('Selecciona un pedido válido.'),
+});
+
+export const splitCreateSchema = z.object({
+  groups: z.array(z.object({
+    label: text(40, 'La etiqueta de la parte').optional().default(''),
+    itemIds: z.array(z.number().int().positive()).min(1, 'Cada parte debe tener al menos un producto.').max(100),
+  })).min(2, 'Crea al menos dos partes.').max(20, 'No puedes crear más de 20 partes.'),
+});
+
+export const refundSchema = z.object({
+  reason: text(300, 'El motivo del reembolso').refine((value) => value.length >= 3, 'Indica el motivo del reembolso.'),
+  managerPin: z.string().regex(/^\d{6}$/, 'El PIN del gerente debe tener 6 dígitos.'),
+});
+
 export const courtesySchema = z.object({
   reason: text(200, 'El motivo de la cortesía').refine((value) => value.length >= 3, 'Indica el motivo de la cortesía.'),
 });
 
 export const payOrderSchema = z.object({
+  splitId: z.number().int().positive('La parte de la cuenta no es válida.').optional(),
   paymentMethod: z
     .string({ error: 'Selecciona un método de pago.' })
     .trim()

@@ -222,15 +222,15 @@ export function consumeInventoryForOrder(db, orderId, staffId, now = new Date().
   const order = db.prepare('SELECT order_number FROM orders WHERE id = ?').get(orderId);
   const update = db.prepare('UPDATE inventory_items SET current_milli = current_milli - ?, updated_at = ? WHERE id = ?');
   const movement = db.prepare(`
-    INSERT INTO inventory_movements (item_id, type, quantity_milli, reference, notes, staff_id, created_at)
-    VALUES (?, 'consumption', ?, ?, ?, ?, ?)
+    INSERT INTO inventory_movements (item_id, type, quantity_milli, reference, notes, order_id, staff_id, created_at)
+    VALUES (?, 'consumption', ?, ?, ?, ?, ?, ?)
   `);
   for (const line of items) {
     const recipe = recipeStatement.all(line.product_id);
     for (const ingredient of recipe) {
       const consumed = Number(ingredient.quantity_milli) * Number(line.quantity);
       update.run(consumed, now, ingredient.inventory_item_id);
-      movement.run(ingredient.inventory_item_id, -consumed, order?.order_number ?? `Pedido ${orderId}`, 'Consumo por venta', staffId, now);
+      movement.run(ingredient.inventory_item_id, -consumed, order?.order_number ?? `Pedido ${orderId}`, 'Consumo por venta', orderId, staffId, now);
     }
   }
 }

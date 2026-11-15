@@ -9,11 +9,12 @@ import {
   createStaff,
   updateStaff,
   listStaff,
+  findManagerByPin,
 } from './auth.js';
 import { getSettings, updateSettings, safeFeatures, filterSettingsForRole } from './settings.js';
 import { registerPublicRoutes } from './public.js';
 import { getCatalog } from './catalog.js';
-import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, closeCourtesyOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
+import { listTables, createOrder, getOrder, updateOrderDraft, payOrder, cancelOrder, closeCourtesyOrder, refundOrder, listOrders, sendOrderToKitchen, ensureReceiptToken } from './orders.js';
 import { getDailyReport, dailyReportCsv } from './reports.js';
 import { getBooleanSetting, getSetting } from './settings.js';
 import { printOrder } from './printer.js';
@@ -38,6 +39,10 @@ import {
   draftSchema,
   payOrderSchema,
   courtesySchema,
+  refundSchema,
+  splitCreateSchema,
+  moveTableSchema,
+  mergeOrderSchema,
   orderListQuerySchema,
   dateQuerySchema,
   categoryCreateSchema,
@@ -75,6 +80,8 @@ import { listIntegrations, createIntegration, updateIntegration } from './integr
 import { listInventoryItems, createInventoryItem, updateInventoryItem, receiveInventory, adjustInventory, listInventoryMovements, listRecipes, saveRecipe } from './inventory.js';
 import { importProducts } from './product-import.js';
 import { requireFeature } from './features.js';
+import { createOrderSplits, clearOrderSplits } from './splits.js';
+import { moveOrderToTable, mergeOrders } from './table-ops.js';
 import { serializeProduct } from './serializers.js';
 import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
 
@@ -397,6 +404,41 @@ export function createApp({ db, config }) {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(payOrderSchema, req.body);
     res.json({ order: payOrder(db, config, id, input, { staffId: req.staff.id }) });
+  });
+
+  api.delete('/orders/:id/splits', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    clearOrderSplits(db, id, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/move', requireFeature(db, 'table_transfer_merge'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(moveTableSchema, req.body);
+    moveOrderToTable(db, id, input.tableId, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/merge', requireFeature(db, 'table_transfer_merge'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(mergeOrderSchema, req.body);
+    mergeOrders(db, id, input.sourceOrderId, req.staff.id);
+    res.json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/splits', requireFeature(db, 'split_bill'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(splitCreateSchema, req.body);
+    const splits = createOrderSplits(db, id, input.groups, req.staff.id);
+    res.status(201).json({ splits, order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/refund', requireFeature(db, 'refunds'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(refundSchema, req.body);
+    const authorizer = findManagerByPin(db, input.managerPin);
+    if (!authorizer) throw new AppError(403, 'INVALID_MANAGER_PIN', 'PIN de gerente incorrecto.');
+    res.json({ order: refundOrder(db, config, id, { reason: input.reason, authorizedById: authorizer.id, staffId: req.staff.id }) });
   });
 
   api.post('/orders/:id/courtesy', requireRoles('owner', 'admin', 'manager'), (req, res) => {

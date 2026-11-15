@@ -10,6 +10,7 @@ import { audit } from './audit.js';
 import { getSetting } from './settings.js';
 import { resolveActivePaymentMethod } from './payment-methods.js';
 import { consumeInventoryForOrder } from './inventory.js';
+import { listOrderSplits } from './splits.js';
 
 const MAX_DISCOUNT_BPS = { server: 1000, cashier: 1000, manager: 2500, admin: 10000, owner: 10000 };
 
@@ -102,6 +103,7 @@ export function getOrder(db, id) {
   const row = loadRawOrder(db, id);
   const order = serializeOrder(row, loadItems(db, id));
   order.payments = loadPayments(db, id).map(serializePayment);
+  order.splits = listOrderSplits(db, id);
   return order;
 }
 
@@ -252,6 +254,9 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
     }
     if (input.delivery === true && raw.type !== 'llevar') {
       throw validationError('Solo un pedido para llevar puede marcarse como delivery.');
+    }
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
+      throw conflict('No se puede modificar un pedido con la cuenta dividida.');
     }
 
     const existingItems = loadItems(db, id);
@@ -569,10 +574,20 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     const paymentMethod = resolveActivePaymentMethod(db, input.paymentMethod);
     const shift = requireOpenShiftForPayment(db);
     const alreadyPaid = Number(raw.amount_paid_cents || 0);
-    const balance = totals.totalCents - alreadyPaid;
-    if (balance <= 0) {
-      throw conflict('Este pedido no tiene saldo pendiente.');
+    const splits = db.prepare('SELECT * FROM order_splits WHERE order_id = ? ORDER BY id').all(id);
+    let split = null;
+    let balance;
+    if (splits.length > 0) {
+      if (!input.splitId) throw conflict('Selecciona la parte de la cuenta que vas a cobrar.');
+      split = splits.find((entry) => Number(entry.id) === Number(input.splitId));
+      if (!split) throw notFound('No se encontró esa parte de la cuenta.');
+      if (split.status === 'paid') throw conflict('Esta parte de la cuenta ya fue pagada.');
+      balance = Number(split.total_cents) - Number(split.amount_paid_cents);
+    } else {
+      if (input.splitId) throw validationError('Este pedido no está dividido.');
+      balance = totals.totalCents - alreadyPaid;
     }
+    if (balance <= 0) throw conflict('Este pedido no tiene saldo pendiente.');
     const amountCents = input.amountCents ?? balance;
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
       throw validationError('El monto del pago debe ser un entero positivo.');
@@ -598,9 +613,9 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     const timestamp = now.toISOString();
     db.prepare(`
       INSERT INTO payments
-        (order_id, shift_id, staff_id, payment_method, method_name, method_kind,
+        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id,
          amount_cents, cash_received_cents, change_cents, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       shift?.id ?? null,
@@ -608,6 +623,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       paymentMethod.code,
       paymentMethod.name,
       paymentMethod.kind,
+      split?.id ?? null,
       amountCents,
       cashReceivedCents,
       changeCents,
@@ -615,7 +631,17 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     );
 
     const newPaid = alreadyPaid + amountCents;
-    const closesOrder = newPaid >= totals.totalCents;
+    if (split) {
+      const splitPaid = Number(split.amount_paid_cents) + amountCents;
+      db.prepare("UPDATE order_splits SET amount_paid_cents = ?, status = ?, paid_at = ? WHERE id = ?")
+        .run(splitPaid, splitPaid >= Number(split.total_cents) ? 'paid' : 'open', splitPaid >= Number(split.total_cents) ? timestamp : null, split.id);
+    }
+    const openSplits = splits.length > 0
+      ? db.prepare("SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ? AND status = 'open'").get(id).count
+      : 0;
+    const closesOrder = splits.length > 0
+      ? Number(openSplits) === 0 && newPaid >= totals.totalCents
+      : newPaid >= totals.totalCents;
     const cashTotals = db.prepare(`
       SELECT COALESCE(SUM(cash_received_cents), 0) AS cash_received,
              COALESCE(SUM(change_cents), 0) AS change_total
@@ -679,6 +705,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       discountReason: raw.discount_reason ?? '',
       tipCents: totals.tipCents,
       shiftId: shift?.id ?? null,
+      splitId: split?.id ?? null,
     });
   });
 
@@ -693,6 +720,9 @@ export function closeCourtesyOrder(db, config, id, { reason, now = new Date(), s
     if (raw.status !== 'abierta') throw conflict('Este pedido ya fue cerrado.', { status: raw.status });
     if (Number(raw.amount_paid_cents || 0) > 0) {
       throw conflict('Este pedido tiene pagos registrados; no se puede cerrar como cortesía.');
+    }
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
+      throw conflict('Cierra las partes de la cuenta antes de registrar una cortesía.');
     }
     const items = loadItems(db, id);
     if (items.length === 0) throw unprocessable('Agrega al menos un producto antes de cerrar la cortesía.');
@@ -736,6 +766,62 @@ export function closeCourtesyOrder(db, config, id, { reason, now = new Date(), s
   return getOrder(db, id);
 }
 
+export function reverseInventoryForOrder(db, orderId, staffId, now = new Date().toISOString()) {
+  const movements = db
+    .prepare("SELECT * FROM inventory_movements WHERE order_id = ? AND type = 'consumption'")
+    .all(orderId);
+  if (movements.length === 0) return 0;
+  const order = db.prepare('SELECT order_number FROM orders WHERE id = ?').get(orderId);
+  const update = db.prepare('UPDATE inventory_items SET current_milli = current_milli + ?, updated_at = ? WHERE id = ?');
+  const insert = db.prepare(`
+    INSERT INTO inventory_movements (item_id, type, quantity_milli, reference, notes, order_id, staff_id, created_at)
+    VALUES (?, 'adjustment', ?, ?, 'Reverso por reembolso', ?, ?, ?)
+  `);
+  for (const movement of movements) {
+    const restore = Math.abs(Number(movement.quantity_milli));
+    update.run(restore, now, movement.item_id);
+    insert.run(movement.item_id, restore, order?.order_number ?? `Pedido ${orderId}`, orderId, staffId, now);
+  }
+  return movements.length;
+}
+
+export function refundOrder(db, config, id, { reason, authorizedById, staffId = null, now = new Date() } = {}) {
+  const cleanReason = String(reason ?? '').trim();
+  if (cleanReason.length < 3) throw validationError('Indica el motivo del reembolso.');
+  const timestamp = now.toISOString();
+  transaction(db, () => {
+    const raw = loadRawOrder(db, id);
+    if (raw.status !== 'pagada') throw conflict('Solo se pueden reembolsar pedidos pagados.');
+    if (raw.refunded_at) throw conflict('Este pedido ya fue reembolsado.');
+    const amountCents = Number(raw.total_cents);
+    if (amountCents <= 0) throw conflict('Este pedido no tiene un cobro que reembolsar.');
+    const cashCents = Number(
+      db.prepare("SELECT COALESCE(SUM(amount_cents), 0) AS total FROM payments WHERE order_id = ? AND method_kind = 'cash'").get(id).total,
+    );
+    const openShift = db.prepare("SELECT id FROM shifts WHERE status = 'open' LIMIT 1").get();
+    if (cashCents > 0 && !openShift) {
+      throw conflict('Abre un turno de caja para registrar el reembolso en efectivo.');
+    }
+    db.prepare(`
+      INSERT INTO refunds (order_id, shift_id, staff_id, authorized_by_staff_id, amount_cents, cash_cents, reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, openShift?.id ?? null, staffId, authorizedById, amountCents, cashCents, cleanReason, timestamp);
+    db.prepare(`
+      UPDATE orders SET refunded_at = ?, refund_cents = ?, refund_reason = ?, updated_at = ? WHERE id = ?
+    `).run(timestamp, amountCents, cleanReason, timestamp, id);
+    reverseInventoryForOrder(db, id, staffId, timestamp);
+    audit(db, staffId, 'order.refund', 'order', id, {
+      amountCents,
+      cashCents,
+      reason: cleanReason,
+      authorizedById,
+      authorizedRole: db.prepare('SELECT role FROM staff WHERE id = ?').get(authorizedById)?.role ?? null,
+      shiftId: openShift?.id ?? null,
+    });
+  });
+  return getOrder(db, id);
+}
+
 export function cancelOrder(db, id, { now = new Date(), staffId = null } = {}) {
   transaction(db, () => {
     const raw = loadRawOrder(db, id);
@@ -744,6 +830,9 @@ export function cancelOrder(db, id, { now = new Date(), staffId = null } = {}) {
     }
     if (Number(raw.amount_paid_cents || 0) > 0) {
       throw conflict('No se puede anular un pedido con pagos registrados.');
+    }
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(id).count > 0) {
+      throw conflict('No se puede anular un pedido con la cuenta dividida.');
     }
     const timestamp = now.toISOString();
     db.prepare(`

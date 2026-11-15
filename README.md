@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **78 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **86 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -172,7 +172,16 @@ Restablece el PIN, reactiva la cuenta, la deja como `admin` y cierra sus sesione
 
 ## Funciones activables
 
-El super admin puede activar o desactivar módulos desde **Administración → Ajustes → Funciones activables**. Los módulos existentes nacen activos; las funciones nuevas de las fases 1–3 nacen apagadas. Si una función está apagada, desaparece de la navegación y su API responde 404.
+El super admin puede activar o desactivar módulos desde **Administración → Ajustes → Funciones activables**. Los módulos existentes nacen activos; las funciones nuevas de las fases 1–3 nacen apagadas. Si una función está apagada, desaparece de la navegación y su API responde 404. El diseño del modo sin conexión está en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md).
+
+## Fase 1 (funciones activables)
+
+- **Dividir cuenta** por producto y persona/asiento, con cobro independiente de cada parte.
+- **Reembolsos** de pedidos pagados con motivo y PIN de gerente; revierte inventario, reportes y efectivo esperado.
+- **Mover y unir mesas/pedidos**, conservando las líneas y liberando la mesa origen.
+- **Modo sin conexión:** diseño propuesto en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md); no se implementa hasta aprobación.
+
+Estas funciones están apagadas por defecto y se activan desde **Ajustes → Funciones activables**.
 
 ## Costa Rica
 

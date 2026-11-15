@@ -10,6 +10,8 @@ import { useDraftOrder } from '@/lib/useDraftOrder';
 import DiscountModal from './DiscountModal';
 import PaymentModal from './PaymentModal';
 import ProductModifierModal from './ProductModifierModal';
+import SplitBillModal from './SplitBillModal';
+import TableOpsModal from './TableOpsModal';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useFeatures } from '@/components/FeatureProvider';
@@ -148,6 +150,7 @@ function PaymentSuccess({ order, onNewOrder }) {
 
 export default function OrderWorkspace({ initialOrder, catalog, onExit, onCompleted }) {
   const { staff } = useAuth();
+  const { enabled } = useFeatures();
   const {
     order,
     saving,
@@ -186,6 +189,10 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
   const [courtesyReason, setCourtesyReason] = useState('');
   const [courtesyError, setCourtesyError] = useState('');
   const [closingCourtesy, setClosingCourtesy] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitTarget, setSplitTarget] = useState(null);
+  const [splitNotice, setSplitNotice] = useState('');
+  const [tableOpsOpen, setTableOpsOpen] = useState(false);
 
   const allProducts = useMemo(
     () =>
@@ -313,10 +320,29 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
     setNoteEditor(null);
   }
 
-  async function handlePaymentConfirm(payload) {
-    const { photos = [], ...payment } = payload;
+  async function handleClearSplits() {
+    if (paidCents > 0) return;
+    try {
+      const response = await api.clearSplits(order.id);
+      applyServerOrder(response.order);
+      setSplitNotice('');
+    } catch (error) {
+      setActionError(error.message || 'No se pudo deshacer la división.');
+    }
+  }
+
+  async function handleSplitSave(groups) {
     await flush();
-    let response = await api.payOrder(order.id, payment);
+    const response = await api.splitOrder(order.id, { groups });
+    applyServerOrder(response.order);
+    setSplitNotice('Cuenta dividida. Cobra cada parte por separado.');
+    return response;
+  }
+
+  async function handlePaymentConfirm(payload) {
+    const { photos = [], splitId = null, ...payment } = payload;
+    await flush();
+    let response = await api.payOrder(order.id, { ...payment, ...(splitId ? { splitId } : {}) });
     let photoUploadError = '';
     if (photos.length > 0) {
       const paymentId = response.order.payments?.at(-1)?.id;
@@ -336,6 +362,11 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       setCartOpen(false);
     } else {
       applyServerOrder(updatedOrder);
+      if (splitId) {
+        setPaymentOpen(false);
+        setSplitTarget(null);
+        setSplitNotice('Parte cobrada. Continúa con la siguiente.');
+      }
     }
     return updatedOrder;
   }
@@ -744,6 +775,26 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
             )}
           </div>
 
+          {order.splits?.length > 0 ? (
+            <div className="split-summary">
+              <div className="split-summary-head"><strong>Cuenta dividida</strong><span>{order.splits.filter((split) => split.status === 'paid').length} / {order.splits.length} pagadas</span></div>
+              {paidCents === 0 ? <button type="button" className="text-button split-undo" onClick={() => void handleClearSplits()}>Deshacer división</button> : null}
+              {order.splits.map((split, index) => (
+                <div key={split.id} className={`split-row ${split.status === 'paid' ? 'is-paid' : ''}`}>
+                  <div><strong>{split.label || `Parte ${index + 1}`}</strong><span>{split.items.length} producto(s) · {formatMoney(split.totalCents)}</span></div>
+                  {split.status === 'paid' ? (
+                    <span className="item-status is-served">Pagada</span>
+                  ) : (
+                    <button type="button" className="btn btn-small btn-secondary" onClick={() => { setSplitTarget(split); setPaymentOpen(true); }} disabled={leaving || split.status === 'paid'}>
+                      Cobrar {formatMoney(split.balanceCents)}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {splitNotice ? <div className="alert alert-success ticket-alert"><Icon name="check" size={18} /><p>{splitNotice}</p></div> : null}
+
           <div className="ticket-totals">
             <div className="summary-row">
               <span>Subtotal</span>
@@ -813,7 +864,13 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 Enviar a cocina · {pendingCount}
               </button>
             ) : null}
-            {isCourtesy && canCourtesy ? (
+            {enabled('split_bill') && (order.splits?.length ?? 0) === 0 && order.items.length >= 2 && paidCents === 0 && order.discountCents === 0 && order.tipCents === 0 ? (
+              <button type="button" className="btn btn-secondary" onClick={() => setSplitOpen(true)} disabled={leaving || saving}>
+                <Icon name="split" size={19} />
+                Dividir cuenta
+              </button>
+            ) : null}
+            {order.splits?.length > 0 ? null : isCourtesy && canCourtesy ? (
               <button
                 type="button"
                 className="btn btn-primary btn-charge"
@@ -841,6 +898,11 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
                 {paidCents > 0 ? `Cobrar saldo ${formatMoney(balanceCents)}` : `Cobrar ${formatMoney(order.totalCents)}`}
               </button>
             )}
+            {enabled('table_transfer_merge') ? (
+              <button type="button" className="text-button" onClick={() => setTableOpsOpen(true)} disabled={leaving || saving}>
+                Mover o unir pedido
+              </button>
+            ) : null}
             <button type="button" className="text-button" onClick={() => void handleExit()} disabled={leaving || saving}>
               Guardar y volver a mesas
             </button>
@@ -904,6 +966,18 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         {courtesyError ? <p className="form-error">{courtesyError}</p> : null}
       </Modal>
 
+      <TableOpsModal
+        open={tableOpsOpen}
+        order={order}
+        onClose={() => setTableOpsOpen(false)}
+        onDone={async (updatedOrder) => { applyServerOrder(updatedOrder); setSplitNotice('Pedido actualizado.'); }}
+      />
+      <SplitBillModal
+        open={splitOpen}
+        order={order}
+        onClose={() => setSplitOpen(false)}
+        onSave={handleSplitSave}
+      />
       <DiscountModal
         open={discountOpen}
         onClose={() => setDiscountOpen(false)}
@@ -913,8 +987,9 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
       />
       <PaymentModal
         open={paymentOpen}
-        onClose={() => setPaymentOpen(false)}
+        onClose={() => { setPaymentOpen(false); setSplitTarget(null); }}
         order={order}
+        split={splitTarget}
         onSetTip={setTip}
         onConfirm={handlePaymentConfirm}
         onRefresh={async () => {
