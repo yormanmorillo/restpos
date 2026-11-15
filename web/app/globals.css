@@ -5641,3 +5641,4 @@ h1 { font-weight: 700; }
   /* Deja espacio para el topbar del pedido: las acciones del ticket siempre caben en pantalla */
   .ticket-panel { max-height: calc(100dvh - var(--header-height) - 112px); }
 }
+.pin-hint { margin: -8px 0 12px; color: var(--ink-faint); font-size: 0.72rem; text-align: center; }

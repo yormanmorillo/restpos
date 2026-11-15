@@ -82,14 +82,14 @@ La base incluye menú, áreas, mesas y modificadores, pero **no incluye empleado
 
 1. Abre <https://pos.example.com/login>.
 2. Verás **Crea tu administrador**.
-3. Captura nombre y un PIN de 6 a 8 dígitos. Se rechazan PINs repetidos o secuenciales.
+3. Captura nombre y un PIN de exactamente 6 dígitos. Se rechazan PINs repetidos o secuenciales.
 4. Después podrás crear cajeros, meseros y cocina desde **Administración → Equipo**.
 
 No compartas la base sin antes revisar los empleados y PINs. Si se pierde el acceso, usa el procedimiento de recuperación.
 
 ### Crear la cuenta del propietario del software
 
-Define `PIN_SEGURO` con 6 a 8 dígitos no triviales:
+Define `PIN_SEGURO` con exactamente 6 dígitos no triviales:
 
 ```bash
 export PIN_SEGURO='...'

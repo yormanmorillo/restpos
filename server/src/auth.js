@@ -10,7 +10,7 @@ import { loginSchema, setupSchema, parseOrThrow } from './validation.js';
 export const SESSION_COOKIE = 'restpos_session';
 const SESSION_TTL_MS_DEFAULT = 12 * 60 * 60 * 1000;
 const PIN_PATTERN = /^\d{4,8}$/;
-const STRONG_PIN_PATTERN = /^\d{6,8}$/;
+const STRONG_PIN_PATTERN = /^\d{6}$/;
 const TRIVIAL_PINS = new Set([
   '000000', '111111', '222222', '333333', '444444', '555555', '666666', '777777', '888888', '999999',
   '123456', '654321', '121212', '112233', '123123', '159753', '147258', '102030', '246810', '135790',
@@ -32,7 +32,7 @@ function isSequential(pin) {
 export function assertPinStrength(pin, role = null) {
   const value = String(pin ?? '');
   if (!STRONG_PIN_PATTERN.test(value)) {
-    throw validationError('El PIN debe tener entre 6 y 8 dígitos.');
+    throw validationError('El PIN debe tener exactamente 6 dígitos.');
   }
   if (TRIVIAL_PINS.has(value) || new Set(value).size === 1 || isSequential(value)) {
     throw validationError('El PIN es demasiado predecible. Elige otro.');

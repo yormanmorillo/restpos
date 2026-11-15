@@ -8,7 +8,7 @@ const pin = String(process.argv[3] || '').trim();
 try {
   assertPinStrength(pin);
 } catch (error) {
-  console.error(`Uso: npm run owner:create -w server -- "Nombre" "PIN_DE_6_A_8_DIGITOS"`);
+  console.error(`Uso: npm run owner:create -w server -- "Nombre" "PIN_DE_6_DIGITOS"`);
   console.error(error.message);
   process.exit(1);
 }

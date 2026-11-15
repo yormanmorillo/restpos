@@ -226,7 +226,7 @@ export function assertValidDate(value) {
 
 const STAFF_ROLES = ['owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'];
 const PIN_PATTERN = /^\d{4,8}$/;
-const NEW_PIN_PATTERN = /^\d{6,8}$/;
+const NEW_PIN_PATTERN = /^\d{6}$/;
 
 export const loginSchema = z.object({
   staffId: z.number().int().positive('Selecciona un empleado.'),
@@ -235,14 +235,14 @@ export const loginSchema = z.object({
 
 export const setupSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.'),
-  pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener entre 6 y 8 dígitos.'),
+  pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener exactamente 6 dígitos.'),
   setupToken: z.string().trim().max(200).optional(),
 });
 
 export const staffCreateSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.'),
   role: z.enum(STAFF_ROLES, { error: 'Selecciona un rol válido.' }),
-  pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener entre 6 y 8 dígitos.'),
+  pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener exactamente 6 dígitos.'),
   active: z.boolean().optional().default(true),
 });
 
@@ -250,7 +250,7 @@ export const staffUpdateSchema = z
   .object({
     name: z.string().trim().min(1, 'El nombre es obligatorio.').max(80, 'El nombre es demasiado largo.').optional(),
     role: z.enum(STAFF_ROLES, { error: 'Selecciona un rol válido.' }).optional(),
-    pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener entre 6 y 8 dígitos.').optional(),
+    pin: z.string().regex(NEW_PIN_PATTERN, 'El PIN debe tener exactamente 6 dígitos.').optional(),
     active: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo para actualizar.');

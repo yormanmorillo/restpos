@@ -45,7 +45,7 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Asignación de grupos a cada producto.
 - Administración de áreas y mesas, capacidad y activación.
 - Equipo con roles `owner` (super admin), `admin` (gerente general), `manager`, `cashier`, `server` y `kitchen`.
-- PINs nuevos de 6 a 8 dígitos, bloqueo progresivo por empleado + IP y sesiones invalidadas al cambiar PIN.
+- PINs nuevos de exactamente 6 dígitos, bloqueo progresivo por empleado + IP y sesiones invalidadas al cambiar PIN.
 - Descuentos limitados por rol (mesero/cajero 10 %, gerente 25 %, super admin 100 %), con motivo obligatorio y auditoría.
 - Cortesía con total cero mediante un cierre auditado, sin registrar un cobro ficticio.
 - Jerarquía: solo el super admin crea o modifica métodos de pago y integraciones; el gerente general puede activarlos o desactivarlos.
@@ -59,7 +59,7 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Límite anti-abuso de pedidos por IP.
 
 ### Operación y seguridad
-- Acceso por empleado con PIN numérico de 4 a 8 dígitos; hash `scrypt` y sesiones con token aleatorio guardado como hash SHA-256.
+- Acceso por empleado con PIN numérico; las cuentas nuevas usan exactamente 6 dígitos; hash `scrypt` y sesiones con token aleatorio guardado como hash SHA-256.
 - Cookie de sesión `HttpOnly`, `SameSite=Lax` y `Secure` en producción.
 - Permisos por rol en la interfaz y en la API.
 - Límite de intentos de PIN por empleado y por IP.
@@ -148,7 +148,7 @@ Borra ventas y pedidos locales y vuelve a cargar el menú y las mesas. Después 
 
 ### Crear la cuenta del propietario del software
 
-Define `PIN_SEGURO` con 6 a 8 dígitos, sin secuencias ni números repetidos:
+Define `PIN_SEGURO` con exactamente 6 dígitos, sin secuencias ni números repetidos:
 
 ```bash
 export PIN_SEGURO='...'

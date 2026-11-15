@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { homeForRole, useAuth } from '@/components/auth/AuthProvider';
 
 const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'];
+const PIN_LENGTH = 6;
 
 export default function LoginPage() {
   return (
@@ -73,11 +74,11 @@ function LoginContent() {
       setPin((previous) => previous.slice(0, -1));
       return;
     }
-    setPin((previous) => (previous.length >= 8 ? previous : previous + key));
+    setPin((previous) => (previous.length >= PIN_LENGTH ? previous : previous + key));
   }
 
   async function submitPin() {
-    if (!selectedStaff || pin.length < 4) {
+    if (!selectedStaff || pin.length < PIN_LENGTH) {
       setError('Selecciona tu nombre e ingresa tu PIN.');
       return;
     }
@@ -101,8 +102,8 @@ function LoginContent() {
       setError('Escribe el nombre del administrador.');
       return;
     }
-    if (!/^\d{6,8}$/.test(setupPin)) {
-      setError('El PIN debe tener entre 6 y 8 dígitos.');
+    if (!/^\d{6}$/.test(setupPin)) {
+      setError('El PIN debe tener exactamente 6 dígitos.');
       return;
     }
     if (setupPin !== setupConfirm) {
@@ -157,14 +158,14 @@ function LoginContent() {
               />
             </label>
             <label className="field">
-              <span className="field-label">PIN de 6 a 8 dígitos</span>
+              <span className="field-label">PIN de exactamente 6 dígitos</span>
               <input
                 className="input login-text-input"
                 type="password"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={setupPin}
-                onChange={(event) => setSetupPin(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                onChange={(event) => setSetupPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="••••••"
               />
             </label>
@@ -175,7 +176,7 @@ function LoginContent() {
                 type="password"
                 inputMode="numeric"
                 value={setupConfirm}
-                onChange={(event) => setSetupConfirm(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                onChange={(event) => setSetupConfirm(event.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="••••"
               />
             </label>
@@ -209,10 +210,11 @@ function LoginContent() {
               <p className="login-subtitle">Ingresa tu PIN para abrir tu sesión.</p>
             </div>
             <div className="pin-dots" aria-label={`${pin.length} dígitos ingresados`}>
-              {Array.from({ length: 8 }, (_, index) => (
+              {Array.from({ length: PIN_LENGTH }, (_, index) => (
                 <span key={index} className={index < pin.length ? 'is-filled' : ''} />
               ))}
             </div>
+            <p className="pin-hint">Ingresa tu PIN de exactamente 6 dígitos</p>
             <div className="pin-pad">
               {PIN_KEYS.map((key) => (
                 <button
@@ -228,7 +230,7 @@ function LoginContent() {
               ))}
             </div>
             {error ? <p className="form-error pin-error" role="alert">{error}</p> : null}
-            <button type="button" className="btn btn-primary login-submit" onClick={() => void submitPin()} disabled={busy || pin.length < 4}>
+            <button type="button" className="btn btn-primary login-submit" onClick={() => void submitPin()} disabled={busy || pin.length < PIN_LENGTH}>
               {busy ? <span className="spinner spinner-small" aria-hidden="true" /> : <Icon name="check" size={19} />}
               Entrar
             </button>
