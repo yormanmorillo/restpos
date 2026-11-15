@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_method TEXT,
   payment_method_name TEXT NOT NULL DEFAULT '',
   public_receipt_token TEXT UNIQUE,
+  client_operation_id TEXT UNIQUE,
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
   business_date TEXT NOT NULL,
@@ -410,6 +411,7 @@ function rebuildLegacyPaymentTables(db) {
         scheduled_for TEXT,
         delivery_fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (delivery_fee_cents >= 0),
   public_receipt_token TEXT UNIQUE,
+  client_operation_id TEXT UNIQUE,
         CHECK (
           (type = 'mesa' AND table_id IS NOT NULL) OR
           (type = 'llevar' AND table_id IS NULL)
@@ -425,7 +427,7 @@ function rebuildLegacyPaymentTables(db) {
         refunded_at, refund_cents, refund_reason,
         delivery, customer_phone, delivery_address, source, amount_paid_cents,
         opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
-        scheduled_for, delivery_fee_cents, public_receipt_token
+        scheduled_for, delivery_fee_cents, public_receipt_token, client_operation_id
       )
       SELECT
         id, order_number, type, table_id, status, customer_name, notes,
@@ -438,7 +440,7 @@ function rebuildLegacyPaymentTables(db) {
         refunded_at, refund_cents, refund_reason,
         delivery, customer_phone, delivery_address, source, amount_paid_cents,
         opened_by_staff_id, closed_by_staff_id, shift_id, kitchen_sent_at,
-        scheduled_for, delivery_fee_cents, public_receipt_token
+        scheduled_for, delivery_fee_cents, public_receipt_token, client_operation_id
       FROM orders;
     `);
 
@@ -535,6 +537,7 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'delivery_fee_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'orders', 'payment_method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'public_receipt_token', 'TEXT');
+  ensureColumn(db, 'orders', 'client_operation_id', 'TEXT');
   ensureColumn(db, 'orders', 'discount_reason', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'orders', 'refunded_at', 'TEXT');
   ensureColumn(db, 'orders', 'refund_cents', 'INTEGER NOT NULL DEFAULT 0');

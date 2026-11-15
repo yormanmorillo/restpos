@@ -11,6 +11,8 @@ export default function TableOpsModal({ open, order, onClose, onDone }) {
   const [orders, setOrders] = useState([]);
   const [tableId, setTableId] = useState('');
   const [sourceOrderId, setSourceOrderId] = useState('');
+  const [transferTargetId, setTransferTargetId] = useState('');
+  const [transferIds, setTransferIds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -25,6 +27,8 @@ export default function TableOpsModal({ open, order, onClose, onDone }) {
         setOrders((ordersResponse.orders ?? []).filter((entry) => entry.id !== order.id));
         setTableId('');
         setSourceOrderId('');
+        setTransferTargetId('');
+        setTransferIds([]);
       })
       .catch((loadError) => setError(loadError.message || 'No se pudieron cargar las mesas.'))
       .finally(() => setLoading(false));
@@ -52,6 +56,17 @@ export default function TableOpsModal({ open, order, onClose, onDone }) {
     finally { setBusy(false); }
   }
 
+  async function transfer() {
+    if (!transferTargetId || transferIds.length === 0) return;
+    setBusy(true); setError('');
+    try {
+      const response = await api.transferItems(order.id, { targetOrderId: Number(transferTargetId), itemIds: transferIds });
+      await onDone(response.order, response.targetOrder);
+      onClose();
+    } catch (transferError) { setError(transferError.message || 'No se pudieron pasar los productos.'); }
+    finally { setBusy(false); }
+  }
+
   const freeTables = tables.filter((table) => table.status === 'libre' && table.active);
 
   return (
@@ -71,6 +86,28 @@ export default function TableOpsModal({ open, order, onClose, onDone }) {
               </div>
             </section>
           ) : null}
+          <section>
+            <h3>Pasar productos a otro pedido</h3>
+            {orders.length === 0 ? <p className="field-hint">No hay otro pedido abierto.</p> : (
+              <>
+                <select className="input select" value={transferTargetId} onChange={(event) => setTransferTargetId(event.target.value)}>
+                  <option value="">Pedido destino…</option>
+                  {orders.map((entry) => <option key={entry.id} value={entry.id}>{entry.orderNumber} · {serviceLabel(entry)} · {formatMoney(entry.totalCents)}</option>)}
+                </select>
+                <div className="transfer-item-list">
+                  {order.items.map((item) => (
+                    <label key={item.id} className="transfer-item-row">
+                      <input type="checkbox" checked={transferIds.includes(item.id)} onChange={(event) => setTransferIds((previous) => event.target.checked ? [...previous, item.id] : previous.filter((id) => id !== item.id))} />
+                      <span><strong>{item.quantity} × {item.productName}</strong><small>{formatMoney(item.lineTotalCents)}</small></span>
+                    </label>
+                  ))}
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={() => void transfer()} disabled={!transferTargetId || transferIds.length === 0 || busy}>
+                  <Icon name="split" size={17} /> Pasar seleccionados
+                </button>
+              </>
+            )}
+          </section>
           <section>
             <h3>Unir otro pedido a esta cuenta</h3>
             {orders.length === 0 ? <p className="field-hint">No hay otros pedidos abiertos para unir.</p> : (

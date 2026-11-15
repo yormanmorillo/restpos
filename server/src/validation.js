@@ -137,8 +137,25 @@ export const draftSchema = z
     }
   });
 
+export const offlineSaleSchema = z.object({
+  operationId: z.string().trim().regex(/^[A-Za-z0-9_-]{8,80}$/, 'El identificador de sincronización no es válido.'),
+  occurredAt: z.string().datetime({ offset: true }).optional(),
+  customerName: text(100, 'El nombre del cliente').optional().default(''),
+  items: z.array(z.object({
+    productId: z.number().int().positive(),
+    quantity: z.number().int().min(1).max(99),
+    notes: text(200, 'La nota').optional().default(''),
+  })).min(1, 'Agrega al menos un producto.').max(100),
+  cashReceivedCents: z.number().int().positive('El efectivo recibido debe ser positivo.'),
+});
+
 export const moveTableSchema = z.object({
   tableId: z.number().int().positive('Selecciona una mesa válida.'),
+});
+
+export const transferItemsSchema = z.object({
+  targetOrderId: z.number().int().positive('Selecciona un pedido destino.'),
+  itemIds: z.array(z.number().int().positive()).min(1, 'Selecciona al menos un producto.').max(100),
 });
 
 export const mergeOrderSchema = z.object({
@@ -155,6 +172,7 @@ export const splitCreateSchema = z.object({
 export const refundSchema = z.object({
   reason: text(300, 'El motivo del reembolso').refine((value) => value.length >= 3, 'Indica el motivo del reembolso.'),
   managerPin: z.string().regex(/^\d{6}$/, 'El PIN del gerente debe tener 6 dígitos.'),
+  amountCents: z.number().int().positive('El monto del reembolso debe ser positivo.').optional(),
 });
 
 export const courtesySchema = z.object({

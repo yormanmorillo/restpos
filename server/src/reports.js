@@ -13,7 +13,8 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
         COALESCE(SUM(tax_cents), 0) AS tax_cents,
         COALESCE(SUM(tip_cents), 0) AS tip_cents,
         COALESCE(SUM(delivery_fee_cents), 0) AS delivery_fees_cents,
-        COALESCE(SUM(total_cents), 0) AS total_cents
+        COALESCE(SUM(total_cents), 0) AS total_cents,
+        COALESCE(SUM(refund_cents), 0) AS refund_cents
       FROM orders
       WHERE status = 'pagada' AND refunded_at IS NULL AND business_date = ?
     `)
@@ -25,8 +26,10 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
   const taxCents = Number(aggregate.tax_cents);
   const tipCents = Number(aggregate.tip_cents);
   const deliveryFeesCents = Number(aggregate.delivery_fees_cents);
-  const totalCollectedCents = Number(aggregate.total_cents);
-  const salesCents = subtotalCents - discountCents + taxCents + deliveryFeesCents;
+  const totalCollectedGrossCents = Number(aggregate.total_cents);
+  const refundCents = Number(aggregate.refund_cents);
+  const totalCollectedCents = totalCollectedGrossCents - refundCents;
+  const salesCents = subtotalCents - discountCents + taxCents + deliveryFeesCents - refundCents;
 
   const paymentRows = db
     .prepare(`
@@ -158,6 +161,7 @@ export function getDailyReport(db, config, date, { now = new Date() } = {}) {
     deliveryFeesCents,
     salesCents,
     totalCollectedCents,
+    refundCents,
     averageTicketCents: orderCount > 0 ? Math.round(totalCollectedCents / orderCount) : 0,
     payments,
     paymentMethods,
@@ -188,6 +192,7 @@ export function dailyReportCsv(report) {
     ['Propinas', report.tipCents / 100],
     ['Subtotal', report.subtotalCents / 100],
     ['Descuentos', report.discountCents / 100],
+    ['Reembolsos', (report.refundCents ?? 0) / 100],
     ['Impuestos', report.taxCents / 100],
     ['Costos de entrega', report.deliveryFeesCents / 100],
     [],

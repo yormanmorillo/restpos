@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **86 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **90 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -177,9 +177,9 @@ El super admin puede activar o desactivar módulos desde **Administración → A
 ## Fase 1 (funciones activables)
 
 - **Dividir cuenta** por producto y persona/asiento, con cobro independiente de cada parte.
-- **Reembolsos** de pedidos pagados con motivo y PIN de gerente; revierte inventario, reportes y efectivo esperado.
-- **Mover y unir mesas/pedidos**, conservando las líneas y liberando la mesa origen.
-- **Modo sin conexión:** diseño propuesto en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md); no se implementa hasta aprobación.
+- **Reembolsos totales y parciales** de pedidos pagados con motivo y PIN de gerente; revierte inventario en el reembolso total, ajusta reportes y efectivo esperado.
+- **Mover mesas, unir pedidos y transferir productos individuales**, conservando las líneas y liberando la mesa origen cuando queda vacía.
+- **Modo sin conexión (primera versión):** PWA, catálogo cacheado, cola local de ventas para llevar en efectivo y sincronización idempotente al reconectar. Limitaciones y diseño completo en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md).
 
 Estas funciones están apagadas por defecto y se activan desde **Ajustes → Funciones activables**.
 

@@ -42,7 +42,9 @@ import {
   refundSchema,
   splitCreateSchema,
   moveTableSchema,
+  offlineSaleSchema,
   mergeOrderSchema,
+  transferItemsSchema,
   orderListQuerySchema,
   dateQuerySchema,
   categoryCreateSchema,
@@ -81,7 +83,8 @@ import { listInventoryItems, createInventoryItem, updateInventoryItem, receiveIn
 import { importProducts } from './product-import.js';
 import { requireFeature } from './features.js';
 import { createOrderSplits, clearOrderSplits } from './splits.js';
-import { moveOrderToTable, mergeOrders } from './table-ops.js';
+import { moveOrderToTable, mergeOrders, transferItems } from './table-ops.js';
+import { createOfflineSale } from './offline.js';
 import { serializeProduct } from './serializers.js';
 import { ALLOWED_IMAGE_TYPES, saveImageFile, imageFilePath, removeImageFile } from './uploads.js';
 
@@ -412,11 +415,23 @@ export function createApp({ db, config }) {
     res.json({ order: getOrder(db, id) });
   });
 
+  api.post('/offline/sales', requireFeature(db, 'offline_mode'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const input = parseOrThrow(offlineSaleSchema, req.body);
+    res.status(201).json({ order: createOfflineSale(db, config, input, req.staff.id) });
+  });
+
   api.post('/orders/:id/move', requireFeature(db, 'table_transfer_merge'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
     const input = parseOrThrow(moveTableSchema, req.body);
     moveOrderToTable(db, id, input.tableId, req.staff.id);
     res.json({ order: getOrder(db, id) });
+  });
+
+  api.post('/orders/:id/transfer-items', requireFeature(db, 'table_transfer_merge'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(transferItemsSchema, req.body);
+    transferItems(db, id, input.targetOrderId, input.itemIds, req.staff.id);
+    res.json({ order: getOrder(db, id), targetOrder: getOrder(db, input.targetOrderId) });
   });
 
   api.post('/orders/:id/merge', requireFeature(db, 'table_transfer_merge'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
@@ -438,7 +453,7 @@ export function createApp({ db, config }) {
     const input = parseOrThrow(refundSchema, req.body);
     const authorizer = findManagerByPin(db, input.managerPin);
     if (!authorizer) throw new AppError(403, 'INVALID_MANAGER_PIN', 'PIN de gerente incorrecto.');
-    res.json({ order: refundOrder(db, config, id, { reason: input.reason, authorizedById: authorizer.id, staffId: req.staff.id }) });
+    res.json({ order: refundOrder(db, config, id, { reason: input.reason, amountCents: input.amountCents, authorizedById: authorizer.id, staffId: req.staff.id }) });
   });
 
   api.post('/orders/:id/courtesy', requireRoles('owner', 'admin', 'manager'), (req, res) => {

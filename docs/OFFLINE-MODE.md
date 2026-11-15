@@ -1,7 +1,8 @@
 # Diseño propuesto: modo sin conexión
 
-> Estado: **propuesta**. No se implementa hasta aprobación explícita.
+> Estado: **primera versión implementada** (ventas para llevar en efectivo).
 > Bandera: `feature_offline_mode` (apagada por defecto).
+> Las ventas offline se guardan en el dispositivo y se sincronizan con `POST /api/offline/sales` usando un `operationId` idempotente.
 
 ## Objetivo
 
@@ -53,6 +54,13 @@ Permitir que una terminal siga creando pedidos y cobrando cuando se interrumpe l
 - Endpoints idempotentes y un protocolo de reconciliación.
 - Pruebas de simulación de red, duplicados, conflictos de mesa y cierre de caja.
 - Definir política de negocio para ventas offline con stock insuficiente.
+
+## Limitaciones de la primera versión
+
+- Solo ventas para llevar y efectivo.
+- No admite modificadores, propinas, delivery ni mesas.
+- No emite ticket desde el dispositivo offline.
+- Si el precio cambió o el turno se cerró, la operación queda en cola con error para revisión.
 
 ## Decisiones pendientes
 

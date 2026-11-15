@@ -237,7 +237,7 @@ El frontend necesita `API_URL=http://api:4000` y `PORT=3000`.
 
 ## Fase 1
 
-Las funciones `split_bill`, `refunds`, `table_transfer_merge` y `offline_mode` están apagadas por defecto. Actívalas desde **Ajustes → Funciones activables**. Los reembolsos requieren un PIN de gerente/admin/owner y un turno abierto si devuelven efectivo. El diseño de offline está en [OFFLINE-MODE.md](OFFLINE-MODE.md).
+Las funciones `split_bill`, `refunds`, `table_transfer_merge` y `offline_mode` están apagadas por defecto. Actívalas desde **Ajustes → Funciones activables**. Los reembolsos requieren un PIN de gerente/admin/owner y un turno abierto si devuelven efectivo. La primera versión de offline (PWA + ventas para llevar en efectivo) está en [OFFLINE-MODE.md](OFFLINE-MODE.md). Activa la bandera y abre el POS con conexión una vez para cachear el menú y el service worker.
 
 ## Funciones activables
 

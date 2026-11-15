@@ -970,7 +970,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         open={tableOpsOpen}
         order={order}
         onClose={() => setTableOpsOpen(false)}
-        onDone={async (updatedOrder) => { applyServerOrder(updatedOrder); setSplitNotice('Pedido actualizado.'); }}
+        onDone={async (updatedOrder) => { applyServerOrder(updatedOrder); if (updatedOrder.status === 'anulada') { onExit(); return; } setSplitNotice('Pedido actualizado.'); }}
       />
       <SplitBillModal
         open={splitOpen}

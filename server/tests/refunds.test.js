@@ -33,6 +33,25 @@ describe('reembolsos', () => {
     expect(denied.status).toBe(404);
   });
 
+  it('permite reembolsos parciales y cierra el saldo con otro reembolso', async () => {
+    const manager = await ctx.agent.post('/api/staff').send({ name: 'Gerente Parcial', role: 'manager', pin: '246813' });
+    expect(manager.status).toBe(201);
+    await owner.patch('/api/settings').send({ settings: { feature_refunds: 'true' } });
+    const order = await paidOrder();
+    const partial = await ctx.agent.post(`/api/orders/${order.id}/refund`).send({ reason: 'Parte del servicio', managerPin: '246813', amountCents: 1000 });
+    expect(partial.status).toBe(200);
+    expect(partial.body.order.refundedAt).toBeNull();
+    expect(partial.body.order.refundCents).toBe(1000);
+    const stillOpen = await ctx.agent.get('/api/reports/daily');
+    expect(stillOpen.body.orderCount).toBe(1);
+    expect(stillOpen.body.refundCents).toBe(1000);
+    const rest = await ctx.agent.post(`/api/orders/${order.id}/refund`).send({ reason: 'Resto del servicio', managerPin: '246813' });
+    expect(rest.status).toBe(200);
+    expect(rest.body.order.refundedAt).toBeTruthy();
+    const finalReport = await ctx.agent.get('/api/reports/daily');
+    expect(finalReport.body.orderCount).toBe(0);
+  });
+
   it('exige PIN de gerente, motivo y revierte inventario y reporte', async () => {
     const manager = await ctx.agent.post('/api/staff').send({ name: 'Gerente Reembolso', role: 'manager', pin: '246813' });
     expect(manager.status).toBe(201);

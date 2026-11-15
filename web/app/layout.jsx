@@ -10,6 +10,7 @@ export const metadata = {
   },
   description: 'Punto de venta moderno para restaurantes. Pedidos, cocina, caja y reportes.',
   icons: { icon: '/matmax-favicon.png', apple: '/matmax-touch.png' },
+  manifest: '/manifest.webmanifest',
 };
 
 export const viewport = {

@@ -785,19 +785,28 @@ export function reverseInventoryForOrder(db, orderId, staffId, now = new Date().
   return movements.length;
 }
 
-export function refundOrder(db, config, id, { reason, authorizedById, staffId = null, now = new Date() } = {}) {
+export function refundOrder(db, config, id, { reason, amountCents: requestedAmount, authorizedById, staffId = null, now = new Date() } = {}) {
   const cleanReason = String(reason ?? '').trim();
   if (cleanReason.length < 3) throw validationError('Indica el motivo del reembolso.');
   const timestamp = now.toISOString();
   transaction(db, () => {
     const raw = loadRawOrder(db, id);
     if (raw.status !== 'pagada') throw conflict('Solo se pueden reembolsar pedidos pagados.');
-    if (raw.refunded_at) throw conflict('Este pedido ya fue reembolsado.');
-    const amountCents = Number(raw.total_cents);
-    if (amountCents <= 0) throw conflict('Este pedido no tiene un cobro que reembolsar.');
-    const cashCents = Number(
+    if (raw.refunded_at) throw conflict('Este pedido ya fue reembolsado por completo.');
+    const totalCents = Number(raw.total_cents);
+    const alreadyRefunded = Number(raw.refund_cents ?? 0);
+    const remaining = totalCents - alreadyRefunded;
+    if (remaining <= 0) throw conflict('Este pedido no tiene saldo por reembolsar.');
+    const amountCents = requestedAmount === undefined ? remaining : Number(requestedAmount);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) throw validationError('El monto del reembolso debe ser un entero positivo.');
+    if (amountCents > remaining) throw validationError('El reembolso no puede superar el saldo pendiente.');
+    const cashPaid = Number(
       db.prepare("SELECT COALESCE(SUM(amount_cents), 0) AS total FROM payments WHERE order_id = ? AND method_kind = 'cash'").get(id).total,
     );
+    const cashRefunded = Number(
+      db.prepare("SELECT COALESCE(SUM(cash_cents), 0) AS total FROM refunds WHERE order_id = ?").get(id).total,
+    );
+    const cashCents = Math.min(amountCents, Math.max(0, cashPaid - cashRefunded));
     const openShift = db.prepare("SELECT id FROM shifts WHERE status = 'open' LIMIT 1").get();
     if (cashCents > 0 && !openShift) {
       throw conflict('Abre un turno de caja para registrar el reembolso en efectivo.');
@@ -806,12 +815,14 @@ export function refundOrder(db, config, id, { reason, authorizedById, staffId = 
       INSERT INTO refunds (order_id, shift_id, staff_id, authorized_by_staff_id, amount_cents, cash_cents, reason, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, openShift?.id ?? null, staffId, authorizedById, amountCents, cashCents, cleanReason, timestamp);
+    const cumulativeRefund = alreadyRefunded + amountCents;
     db.prepare(`
       UPDATE orders SET refunded_at = ?, refund_cents = ?, refund_reason = ?, updated_at = ? WHERE id = ?
-    `).run(timestamp, amountCents, cleanReason, timestamp, id);
-    reverseInventoryForOrder(db, id, staffId, timestamp);
+    `).run(cumulativeRefund >= totalCents ? timestamp : null, cumulativeRefund, cleanReason, timestamp, id);
+    if (cumulativeRefund >= totalCents) reverseInventoryForOrder(db, id, staffId, timestamp);
     audit(db, staffId, 'order.refund', 'order', id, {
       amountCents,
+      cumulativeRefund,
       cashCents,
       reason: cleanReason,
       authorizedById,

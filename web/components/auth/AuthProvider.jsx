@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { cacheStaff, clearCachedStaff, readCachedStaff } from '@/lib/offline';
 
 const AuthContext = createContext(null);
 
@@ -30,11 +31,14 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.getAuthStatus();
       setStaff(response.staff ?? null);
+      if (response.staff) cacheStaff(response.staff);
+      else clearCachedStaff();
       setSetupRequired(Boolean(response.setupRequired));
       return response;
     } catch {
-      setStaff(null);
-      return { authenticated: false, staff: null, setupRequired: false };
+      const cached = typeof navigator !== 'undefined' && !navigator.onLine ? readCachedStaff() : null;
+      setStaff(cached ?? null);
+      return { authenticated: Boolean(cached), staff: cached ?? null, setupRequired: false };
     } finally {
       setLoading(false);
     }
@@ -47,17 +51,25 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const onUnauthorized = () => {
       setStaff(null);
+      clearCachedStaff();
       router.replace('/login');
     };
     window.addEventListener('restpos:unauthorized', onUnauthorized);
     return () => window.removeEventListener('restpos:unauthorized', onUnauthorized);
   }, [router]);
 
+  const setStaffAndCache = useCallback((value) => {
+    setStaff(value);
+    if (value) cacheStaff(value);
+    else clearCachedStaff();
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
     } finally {
       setStaff(null);
+      clearCachedStaff();
       router.replace('/login');
     }
   }, [router]);
@@ -69,7 +81,7 @@ export function AuthProvider({ children }) {
       setupRequired,
       refresh,
       logout,
-      setStaff,
+      setStaff: setStaffAndCache,
       isRole: (...roles) => Boolean(staff && roles.includes(staff.role)),
     }),
     [staff, loading, setupRequired, refresh, logout],

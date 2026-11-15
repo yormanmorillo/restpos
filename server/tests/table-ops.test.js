@@ -48,6 +48,25 @@ describe('mover y unir mesas', () => {
     expect(merged.body.order.totalCents).toBeGreaterThan(0);
   });
 
+  it('pasa productos individuales y libera la mesa si el origen queda vacío', async () => {
+    await owner.patch('/api/settings').send({ settings: { feature_table_transfer_merge: 'true' } });
+    const source = await openTable(1, 1, 'line-transfer-01');
+    await ctx.agent.patch(`/api/orders/${source.id}/draft`).send({ items: [line('line-transfer-01', 1, 1), line('line-transfer-02', 2, 1)] });
+    const target = await openTable(2, 3, 'line-transfer-target');
+    const sourceOrder = await ctx.agent.get(`/api/orders/${source.id}`);
+    const [first] = sourceOrder.body.order.items;
+    const moved = await ctx.agent.post(`/api/orders/${source.id}/transfer-items`).send({ targetOrderId: target.id, itemIds: [first.id] });
+    expect(moved.status).toBe(200);
+    expect(moved.body.order.items).toHaveLength(1);
+    expect(moved.body.targetOrder.items).toHaveLength(2);
+    expect(moved.body.order.status).toBe('abierta');
+    const remaining = moved.body.order.items[0];
+    const emptied = await ctx.agent.post(`/api/orders/${source.id}/transfer-items`).send({ targetOrderId: target.id, itemIds: [remaining.id] });
+    expect(emptied.status).toBe(200);
+    expect(emptied.body.order.status).toBe('anulada');
+    expect(ctx.db.prepare('SELECT status FROM restaurant_tables WHERE id = 1').get().status).toBe('libre');
+  });
+
   it('requiere la función activa', async () => {
     const order = await openTable(1);
     const response = await ctx.agent.post(`/api/orders/${order.id}/move`).send({ tableId: 2 });

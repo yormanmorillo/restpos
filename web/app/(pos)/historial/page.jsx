@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { useFeatures } from '@/components/FeatureProvider';
 import ShareWhatsAppButton from '@/components/ShareWhatsAppButton';
 import { api } from '@/lib/api';
+import { centsToInput, parseMoneyToCents } from '@restpos/shared/money';
 import {
   formatBusinessDate,
   formatMoney,
@@ -76,6 +77,7 @@ export default function HistoryPage() {
   const [refundPin, setRefundPin] = useState('');
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundError, setRefundError] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
   const [refundNotice, setRefundNotice] = useState('');
 
   const loadDay = useCallback(async (requestedDate) => {
@@ -131,13 +133,18 @@ export default function HistoryPage() {
     if (!refundTarget) return;
     if (refundReason.trim().length < 3) { setRefundError('Indica el motivo del reembolso.'); return; }
     if (!/^\d{6}$/.test(refundPin)) { setRefundError('El PIN del gerente debe tener 6 dígitos.'); return; }
+    let amountCents;
+    try { amountCents = parseMoneyToCents(refundAmount); } catch { setRefundError('Escribe un monto válido.'); return; }
+    const remaining = refundTarget.totalCents - Number(refundTarget.refundCents ?? 0);
+    if (amountCents <= 0 || amountCents > remaining) { setRefundError(`El monto debe estar entre ${formatMoney(1)} y ${formatMoney(remaining)}.`); return; }
     setRefundBusy(true);
     setRefundError('');
     try {
-      await api.refundOrder(refundTarget.id, { reason: refundReason.trim(), managerPin: refundPin });
+      await api.refundOrder(refundTarget.id, { reason: refundReason.trim(), managerPin: refundPin, amountCents });
       setRefundTarget(null);
       setRefundReason('');
       setRefundPin('');
+      setRefundAmount('');
       setRefundNotice(`Pedido ${refundTarget.orderNumber} reembolsado.`);
       window.setTimeout(() => setRefundNotice(''), 4000);
       await loadDay(date);
@@ -430,9 +437,10 @@ export default function HistoryPage() {
                         <td className="align-right amount-cell">{formatMoney(order.totalCents)}</td>
                         <td className="align-right">
                           {order.refundedAt ? <span className="status-pill is-refunded">Reembolsado</span> : null}
+                          {!order.refundedAt && Number(order.refundCents) > 0 ? <span className="status-pill is-refunded">Reembolso parcial</span> : null}
                           {order.status === 'pagada' ? <ShareWhatsAppButton orderId={order.id} compact className="icon-button table-link" /> : null}
                           {canRefund && order.status === 'pagada' && !order.refundedAt ? (
-                            <button type="button" className="icon-button table-link" title="Reembolsar pedido" aria-label={`Reembolsar ${order.orderNumber}`} onClick={() => { setRefundTarget(order); setRefundReason(''); setRefundPin(''); setRefundError(''); }}>
+                            <button type="button" className="icon-button table-link" title="Reembolsar pedido" aria-label={`Reembolsar ${order.orderNumber}`} onClick={() => { setRefundTarget(order); setRefundReason(''); setRefundPin(''); setRefundAmount(centsToInput(order.totalCents - Number(order.refundCents ?? 0))); setRefundError(''); }}>
                               <Icon name="cash" size={18} />
                             </button>
                           ) : null}
@@ -493,6 +501,11 @@ export default function HistoryPage() {
         }
       >
         <p className="confirm-copy">Se devolverá el total cobrado, se revertirá el inventario y se ajustará el efectivo esperado del turno. La acción queda en auditoría.</p>
+        <label className="field">
+          <span className="field-label">Monto a reembolsar</span>
+          <div className="money-input-wrap"><span className="money-prefix">₡</span><input className="input money-input" inputMode="decimal" value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} /></div>
+          <span className="field-hint">Puedes reembolsar una parte; el inventario solo se revierte en el reembolso total.</span>
+        </label>
         <label className="field">
           <span className="field-label">Motivo</span>
           <textarea className="input" rows={2} maxLength={300} value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Ej. cargo duplicado, pedido incorrecto…" autoFocus />
