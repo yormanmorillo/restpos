@@ -234,3 +234,27 @@ export function consumeInventoryForOrder(db, orderId, staffId, now = new Date().
     }
   }
 }
+
+export function productStockAvailability(db, productIds) {
+  const ids = [...new Set((productIds ?? []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (ids.length === 0) return new Map();
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT pi.product_id, pi.quantity_milli, ii.current_milli
+    FROM product_ingredients pi
+    JOIN inventory_items ii ON ii.id = pi.inventory_item_id
+    WHERE pi.product_id IN (${placeholders}) AND ii.active = 1
+  `).all(...ids);
+  const result = new Map(ids.map((id) => [id, { hasRecipe: false, availableUnits: null, soldOut: false }]));
+  for (const row of rows) {
+    const entry = result.get(Number(row.product_id));
+    if (!entry) continue;
+    entry.hasRecipe = true;
+    const units = Math.floor(Number(row.current_milli) / Math.max(1, Number(row.quantity_milli)));
+    entry.availableUnits = entry.availableUnits === null ? units : Math.min(entry.availableUnits, units);
+  }
+  for (const entry of result.values()) {
+    if (entry.hasRecipe) entry.soldOut = entry.availableUnits <= 0;
+  }
+  return result;
+}

@@ -244,7 +244,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
 
   function productCard(product) {
     const quantity = productQtyInOrder(order, product.id);
-    const disabled = !product.active;
+    const disabled = !product.active || product.soldOut;
     return (
       <button
         key={product.id}
@@ -256,7 +256,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
           else addProduct(product);
         }}
         disabled={disabled || locked}
-        aria-label={`${product.name}, ${formatMoney(product.priceCents)}${disabled ? ', no disponible' : '. Agregar al pedido.'}`}
+        aria-label={`${product.name}, ${formatMoney(product.priceCents)}${product.soldOut ? ', agotado' : disabled ? ', no disponible' : '. Agregar al pedido.'}`}
       >
         {product.imageUrl ? (
           <span className="product-image"><img src={product.imageUrl} alt="" loading="lazy" /></span>
@@ -264,6 +264,7 @@ export default function OrderWorkspace({ initialOrder, catalog, onExit, onComple
         <div className="product-card-heading">
           {search.trim() || categoryId === 'all' ? <span className="product-category">{product.categoryName}</span> : null}
           <h3>{product.name}</h3>
+          {product.soldOut ? <span className="product-soldout">Agotado</span> : null}
           {product.description ? <p>{product.description}</p> : null}
           {(product.modifierGroups ?? []).length > 0 ? (
             <span className="product-options-hint"><Icon name="sliders" size={13} /> Personalizable</span>

@@ -9,7 +9,8 @@ import { requireOpenShiftForPayment } from './shifts.js';
 import { audit } from './audit.js';
 import { getSetting } from './settings.js';
 import { resolveActivePaymentMethod } from './payment-methods.js';
-import { consumeInventoryForOrder } from './inventory.js';
+import { consumeInventoryForOrder, productStockAvailability } from './inventory.js';
+import { featureEnabled } from './features.js';
 import { listOrderSplits } from './splits.js';
 
 const MAX_DISCOUNT_BPS = { server: 1000, cashier: 1000, manager: 2500, admin: 10000, owner: 10000 };
@@ -325,6 +326,8 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
           ready_at: notesChanged ? null : existing.ready_at,
           served_at: notesChanged ? null : existing.served_at,
           course: line.course ?? existing.course,
+          stationId: existing.station_id ?? null,
+          prepSeconds: Number(existing.prep_seconds ?? 0),
           modifiers: existing.modifiers,
           modifiersTotalCents: Number(existing.modifiers_total_cents ?? 0),
           lineTotalCents: calculateLineTotal(Number(existing.unit_price_cents), line.quantity),
@@ -342,6 +345,12 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
           productId: Number(product.id),
         });
       }
+      if (!existingProductIds.has(line.productId) && featureEnabled(db, 'inventory_sold_out')) {
+        const availability = productStockAvailability(db, [Number(product.id)]).get(Number(product.id));
+        if (availability?.soldOut) {
+          throw unprocessable(`"${product.name}" está agotado por inventario.`, { productId: Number(product.id) });
+        }
+      }
       const selection = resolveSelectedModifiers(db, Number(product.id), line.modifiers ?? []);
       const unitPriceCents = Number(product.price_cents) + selection.modifiersTotalCents;
       return {
@@ -352,6 +361,8 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
         productId: Number(product.id),
         productName: product.name,
         unitPriceCents,
+        stationId: product.station_id ?? db.prepare("SELECT id FROM kitchen_stations WHERE active = 1 ORDER BY sort_order, id LIMIT 1").get()?.id ?? null,
+        prepSeconds: Number(product.prep_seconds ?? 0),
         modifiers: selection.modifiers.map((modifier) => ({
           modifier_id: modifier.modifierId,
           group_name: modifier.groupName,
@@ -394,15 +405,15 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
       UPDATE order_items SET
         product_id = ?, product_name = ?, unit_price_cents = ?, quantity = ?, notes = ?,
         line_total_cents = ?, status = ?, course = ?, sent_at = ?, ready_at = ?, served_at = ?,
-        modifiers_total_cents = ?, sort_order = ?, sent_quantity = ?
+        modifiers_total_cents = ?, sort_order = ?, sent_quantity = ?, station_id = ?, prep_seconds = ?
       WHERE id = ? AND order_id = ?
     `);
     const insertItem = db.prepare(`
       INSERT INTO order_items
         (order_id, client_key, product_id, product_name, unit_price_cents, quantity, notes,
          line_total_cents, status, course, sent_at, ready_at, served_at,
-         modifiers_total_cents, sort_order, sent_quantity)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         modifiers_total_cents, sort_order, sent_quantity, station_id, prep_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertModifier = db.prepare(`
       INSERT INTO order_item_modifiers
@@ -426,6 +437,8 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
           item.modifiersTotalCents,
           index,
           item.sentQuantity,
+          item.stationId ?? null,
+          item.prepSeconds ?? 0,
           item.id,
           id,
         );
@@ -448,6 +461,8 @@ export function updateOrderDraft(db, config, id, input, { now = new Date(), staf
         item.modifiersTotalCents,
         index,
         0,
+        item.stationId ?? null,
+        item.prepSeconds ?? 0,
       );
       const itemId = Number(result.lastInsertRowid);
       for (const modifier of item.modifiers) {

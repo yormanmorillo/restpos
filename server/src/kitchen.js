@@ -20,7 +20,7 @@ function attachModifiers(db, items) {
   return items.map((item) => ({ ...item, modifiers: byItem.get(Number(item.id)) ?? [] }));
 }
 
-export function getKitchenTickets(db) {
+export function getKitchenTickets(db, { stationId = null } = {}) {
   const orders = db
     .prepare(`
       SELECT o.id, o.order_number, o.type, o.table_id, o.source, o.delivery,
@@ -34,19 +34,23 @@ export function getKitchenTickets(db) {
         AND EXISTS (
           SELECT 1 FROM order_items oi
           WHERE oi.order_id = o.id AND oi.status IN ('sent', 'preparing', 'ready')
+            ${stationId ? 'AND oi.station_id = ?' : ''}
         )
       ORDER BY o.kitchen_sent_at ASC, o.id ASC
     `)
-    .all();
+    .all(...(stationId ? [stationId] : []));
   if (orders.length === 0) return [];
   const placeholders = orders.map(() => '?').join(',');
   const allItems = attachModifiers(
     db,
     db.prepare(`
-      SELECT * FROM order_items
-      WHERE order_id IN (${placeholders}) AND status IN ('sent', 'preparing', 'ready')
-      ORDER BY order_id, sort_order, id
-    `).all(...orders.map((order) => order.id)),
+      SELECT oi.*, ks.name AS station_name, ks.color AS station_color
+      FROM order_items oi
+      LEFT JOIN kitchen_stations ks ON ks.id = oi.station_id
+      WHERE oi.order_id IN (${placeholders}) AND oi.status IN ('sent', 'preparing', 'ready')
+        ${stationId ? 'AND oi.station_id = ?' : ''}
+      ORDER BY oi.order_id, oi.sort_order, oi.id
+    `).all(...orders.map((order) => order.id), ...(stationId ? [stationId] : [])),
   );
   const byOrder = new Map();
   for (const item of allItems) {
@@ -61,6 +65,11 @@ export function getKitchenTickets(db) {
       course: Number(item.course),
       sentAt: item.sent_at,
       sentQuantity: Number(item.sent_quantity ?? 0),
+      stationId: item.station_id === null || item.station_id === undefined ? null : Number(item.station_id),
+      stationName: item.station_name ?? null,
+      stationColor: item.station_color ?? null,
+      prepSeconds: Number(item.prep_seconds ?? 0),
+      targetAt: item.sent_at && Number(item.prep_seconds ?? 0) > 0 ? new Date(new Date(item.sent_at).getTime() + Number(item.prep_seconds) * 1000).toISOString() : null,
       readyAt: item.ready_at,
       modifiers: (item.modifiers ?? []).map((modifier) => ({
         name: modifier.modifier_name,
@@ -88,6 +97,7 @@ export function getKitchenTickets(db) {
       status: order.status,
       items,
       itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+      stations: [...new Map(items.filter((item) => item.stationId).map((item) => [item.stationId, { id: item.stationId, name: item.stationName, color: item.stationColor }])).values()],
     };
   });
 }

@@ -59,6 +59,12 @@ export const FEATURES = {
     phase: 1,
     defaultEnabled: false,
   },
+  inventory_sold_out: {
+    label: 'Agotados por inventario',
+    description: 'Marca y bloquea productos cuando su receta no tiene stock suficiente.',
+    phase: 2,
+    defaultEnabled: false,
+  },
   kitchen_stations: {
     label: 'Cocina por estaciones',
     description: 'Barra, parrilla, postres y vista de expedición.',

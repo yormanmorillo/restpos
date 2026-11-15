@@ -104,7 +104,11 @@ export const api = {
   getDailyReport: (date) => request(`/reports/daily${queryString({ date })}`),
   getDailyReportCsvUrl: (date) => `/api/reports/daily.csv${queryString({ date })}`,
 
-  getKitchenTickets: () => request('/kitchen/orders'),
+  getKitchenTickets: (stationId) => request(`/kitchen/orders${queryString({ stationId })}`),
+  getKitchenStations: () => request('/kitchen/stations'),
+  getAdminKitchenStations: () => request('/admin/kitchen-stations'),
+  createKitchenStation: (body) => request('/admin/kitchen-stations', { method: 'POST', body }),
+  updateKitchenStation: (id, body) => request(`/admin/kitchen-stations/${id}`, { method: 'PATCH', body }),
   updateKitchenItem: (id, status) => request(`/kitchen/items/${id}`, { method: 'PATCH', body: { status } }),
   updateKitchenTicket: (id, status) => request(`/kitchen/orders/${id}`, { method: 'PATCH', body: { status } }),
 

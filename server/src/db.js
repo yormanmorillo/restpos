@@ -14,6 +14,16 @@ CREATE TABLE IF NOT EXISTS categories (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kitchen_stations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  color TEXT NOT NULL DEFAULT '#c45d3a',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
@@ -109,6 +119,8 @@ CREATE TABLE IF NOT EXISTS order_items (
   line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0),
   sort_order INTEGER NOT NULL DEFAULT 0,
   sent_quantity INTEGER NOT NULL DEFAULT 0,
+  station_id INTEGER REFERENCES kitchen_stations(id) ON DELETE SET NULL,
+  prep_seconds INTEGER NOT NULL DEFAULT 0,
   split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL
 );
 
@@ -544,6 +556,8 @@ export function migrate(db) {
   ensureColumn(db, 'orders', 'refund_reason', "TEXT NOT NULL DEFAULT ''");
 
   ensureColumn(db, 'products', 'image_path', 'TEXT');
+  ensureColumn(db, 'products', 'station_id', 'INTEGER REFERENCES kitchen_stations(id)');
+  ensureColumn(db, 'products', 'prep_seconds', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'payments', 'method_kind', "TEXT NOT NULL DEFAULT 'other'");
   ensureColumn(db, 'payments', 'split_id', 'INTEGER REFERENCES order_splits(id)');
@@ -556,6 +570,8 @@ export function migrate(db) {
   ensureColumn(db, 'order_items', 'modifiers_total_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'order_items', 'sent_quantity', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'order_items', 'split_id', 'INTEGER REFERENCES order_splits(id)');
+  ensureColumn(db, 'order_items', 'station_id', 'INTEGER REFERENCES kitchen_stations(id)');
+  ensureColumn(db, 'order_items', 'prep_seconds', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'inventory_movements', 'order_id', 'INTEGER REFERENCES orders(id)');
   db.exec("UPDATE order_items SET sent_quantity = quantity WHERE status <> 'pending' AND sent_quantity = 0");
 
@@ -737,6 +753,17 @@ export function seedOperationalData(db, { now = new Date().toISOString() } = {})
     );
     for (const [key, value] of Object.entries(SETTINGS_DEFAULTS)) {
       insertSetting.run(key, value, now);
+    }
+
+    const stationCount = db.prepare('SELECT COUNT(*) AS count FROM kitchen_stations').get().count;
+    if (stationCount === 0) {
+      const insertStation = db.prepare(`
+        INSERT INTO kitchen_stations (name, color, sort_order, active, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?)
+      `);
+      for (const [name, color, sortOrder] of [['Cocina', '#c45d3a', 10], ['Barra', '#3f7d6a', 20], ['Postres', '#9a6b3f', 30]]) {
+        insertStation.run(name, color, sortOrder, now, now);
+      }
     }
 
     const paymentMethodCount = db

@@ -32,8 +32,9 @@ function loadCategory(db, id) {
 function loadProduct(db, id) {
   const row = db
     .prepare(`
-      SELECT p.*, c.name AS category_name
+      SELECT p.*, c.name AS category_name, ks.name AS station_name
       FROM products p JOIN categories c ON c.id = p.category_id
+      LEFT JOIN kitchen_stations ks ON ks.id = p.station_id
       WHERE p.id = ?
     `)
     .get(id);
@@ -93,8 +94,9 @@ export function updateCategory(db, id, input) {
 export function listAdminProducts(db) {
   const rows = db
     .prepare(`
-      SELECT p.*, c.name AS category_name
+      SELECT p.*, c.name AS category_name, ks.name AS station_name
       FROM products p JOIN categories c ON c.id = p.category_id
+      LEFT JOIN kitchen_stations ks ON ks.id = p.station_id
       ORDER BY c.sort_order, p.sort_order, p.name
     `)
     .all();
@@ -112,14 +114,16 @@ export function createProduct(db, input) {
   const result = db
     .prepare(`
       INSERT INTO products
-        (category_id, name, description, price_cents, active, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (category_id, name, description, price_cents, station_id, prep_seconds, active, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       input.categoryId,
       input.name,
       input.description ?? '',
       input.priceCents,
+      input.stationId ?? null,
+      input.prepSeconds ?? 0,
       input.active === false ? 0 : 1,
       input.sortOrder ?? 0,
       timestamp,
@@ -148,6 +152,8 @@ export function updateProduct(db, id, input) {
     ['name', 'name'],
     ['description', 'description'],
     ['priceCents', 'price_cents'],
+    ['stationId', 'station_id'],
+    ['prepSeconds', 'prep_seconds'],
     ['sortOrder', 'sort_order'],
     ['active', 'active'],
   ];

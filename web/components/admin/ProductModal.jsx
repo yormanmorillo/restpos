@@ -13,12 +13,14 @@ function messageFromError(error) {
   return error?.message || 'No se pudo guardar el producto.';
 }
 
-export default function ProductModal({ open, product, categories, onClose, onSubmit }) {
+export default function ProductModal({ open, product, categories, stations = [], onClose, onSubmit }) {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [sortOrder, setSortOrder] = useState('0');
+  const [stationId, setStationId] = useState('');
+  const [prepMinutes, setPrepMinutes] = useState('0');
   const [active, setActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +36,8 @@ export default function ProductModal({ open, product, categories, onClose, onSub
     setDescription(product?.description ?? '');
     setPrice(product ? centsToInput(product.priceCents) : '');
     setSortOrder(String(product?.sortOrder ?? 0));
+    setStationId(String(product?.stationId ?? ''));
+    setPrepMinutes(String(Math.round((product?.prepSeconds ?? 0) / 60)));
     setActive(product?.active ?? true);
     setSubmitting(false);
     setError('');
@@ -96,6 +100,8 @@ export default function ProductModal({ open, product, categories, onClose, onSub
         description: description.trim(),
         priceCents,
         sortOrder: orderNumber,
+        stationId: stationId ? Number(stationId) : null,
+        prepSeconds: Math.max(0, Number(prepMinutes) || 0) * 60,
         active,
       }, { imageFile, removeImage });
       onClose();
@@ -197,6 +203,22 @@ export default function ProductModal({ open, product, categories, onClose, onSub
             />
           </div>
         </label>
+
+        {stations.length > 0 ? (
+          <>
+            <label className="field">
+              <span className="field-label">Estación de cocina</span>
+              <select className="input select" value={stationId} onChange={(event) => setStationId(event.target.value)}>
+                <option value="">Sin estación</option>
+                {stations.filter((station) => station.active).map((station) => <option key={station.id} value={station.id}>{station.name}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Preparación <small className="field-hint">minutos</small></span>
+              <input className="input" type="number" min={0} max={120} value={prepMinutes} onChange={(event) => setPrepMinutes(event.target.value)} />
+            </label>
+          </>
+        ) : null}
 
         <label className="field field-full">
           <span className="field-label">Descripción</span>

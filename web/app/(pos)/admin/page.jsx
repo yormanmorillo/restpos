@@ -7,7 +7,7 @@ import { formatMoney } from '@/lib/format';
 import ProductModal from '@/components/admin/ProductModal';
 import CategoryModal from '@/components/admin/CategoryModal';
 import BulkImportModal from '@/components/admin/BulkImportModal';
-import { FeatureGate } from '@/components/FeatureProvider';
+import { FeatureGate, useFeatures } from '@/components/FeatureProvider';
 
 function StatusBadge({ active }) {
   return (
@@ -38,6 +38,8 @@ function AdminSkeleton() {
 export default function AdminPage() {
   const [tab, setTab] = useState('products');
   const [categories, setCategories] = useState([]);
+  const { enabled } = useFeatures();
+  const [stations, setStations] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,9 +54,10 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [categoriesResponse, productsResponse] = await Promise.all([
+      const [categoriesResponse, productsResponse, stationsResponse] = await Promise.all([
         api.getAdminCategories(),
         api.getAdminProducts(),
+        enabled('kitchen_stations') ? api.getAdminKitchenStations() : Promise.resolve({ stations: [] }),
       ]);
       setCategories(categoriesResponse.categories);
       setProducts(productsResponse.products);
@@ -64,7 +67,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     void loadData();
@@ -464,6 +467,7 @@ export default function AdminPage() {
         open={productModal.open}
         product={productModal.product}
         categories={categories}
+        stations={stations}
         onClose={() => setProductModal({ open: false, product: null })}
         onSubmit={saveProduct}
       />

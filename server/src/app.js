@@ -19,6 +19,7 @@ import { getDailyReport, dailyReportCsv } from './reports.js';
 import { getBooleanSetting, getSetting } from './settings.js';
 import { printOrder } from './printer.js';
 import { getKitchenTickets, updateKitchenItem, updateKitchenTicket } from './kitchen.js';
+import { listKitchenStations, createKitchenStation, updateKitchenStation } from './kitchen-stations.js';
 import { getShiftSummary, getOpenShift, openShift, closeShift } from './shifts.js';
 import { listModifierGroups, createModifierGroup, updateModifierGroup, setProductModifierGroups } from './modifiers.js';
 import {
@@ -45,6 +46,8 @@ import {
   offlineSaleSchema,
   mergeOrderSchema,
   transferItemsSchema,
+  kitchenStationCreateSchema,
+  kitchenStationUpdateSchema,
   orderListQuerySchema,
   dateQuerySchema,
   categoryCreateSchema,
@@ -503,8 +506,28 @@ export function createApp({ db, config }) {
     res.json({ success: true });
   });
 
+  api.get('/kitchen/stations', requireFeature(db, 'kitchen_stations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
+    res.json({ stations: listKitchenStations(db, { activeOnly: true }) });
+  });
+
+  api.get('/admin/kitchen-stations', requireFeature(db, 'kitchen_stations'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    res.json({ stations: listKitchenStations(db) });
+  });
+
+  api.post('/admin/kitchen-stations', requireFeature(db, 'kitchen_stations'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const input = parseOrThrow(kitchenStationCreateSchema, req.body);
+    res.status(201).json({ station: createKitchenStation(db, input) });
+  });
+
+  api.patch('/admin/kitchen-stations/:id', requireFeature(db, 'kitchen_stations'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(kitchenStationUpdateSchema, req.body);
+    res.json({ station: updateKitchenStation(db, id, input) });
+  });
+
   api.get('/kitchen/orders', requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {
-    res.json({ tickets: getKitchenTickets(db) });
+    const stationId = req.query.stationId ? Number(req.query.stationId) : null;
+    res.json({ tickets: getKitchenTickets(db, { stationId: Number.isInteger(stationId) && stationId > 0 ? stationId : null }) });
   });
 
   api.patch('/kitchen/items/:id', requireRoles('owner', 'admin', 'manager', 'cashier', 'server', 'kitchen'), (req, res) => {

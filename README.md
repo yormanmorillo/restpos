@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **90 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **94 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -182,6 +182,13 @@ El super admin puede activar o desactivar módulos desde **Administración → A
 - **Modo sin conexión (primera versión):** PWA, catálogo cacheado, cola local de ventas para llevar en efectivo y sincronización idempotente al reconectar. Limitaciones y diseño completo en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md).
 
 Estas funciones están apagadas por defecto y se activan desde **Ajustes → Funciones activables**.
+
+## Fase 2 (en curso)
+
+- **KDS por estaciones**: Cocina, Barra, Postres u otras; cada producto se asigna a una estación y tiene tiempo objetivo de preparación.
+- **Agotados por inventario**: si la receta no alcanza para una unidad, el producto se marca agotado y no se puede agregar a pedidos nuevos.
+- Estaciones y agotados están apagados por defecto y se activan en **Funciones activables**.
+- Pendientes de Fase 2: clientes/fidelidad, reservas/lista de espera, pedidos QR y vista móvil de mesero.
 
 ## Costa Rica
 

@@ -206,13 +206,14 @@ export default function PublicOrderPage() {
 
             <div className="public-product-grid">
               {products.map((product) => (
-                <button key={product.id} type="button" className="public-product-card" onClick={() => selectProduct(product)}>
+                <button key={product.id} type="button" className={`public-product-card ${product.soldOut ? 'is-soldout' : ''}`} onClick={() => { if (!product.soldOut) selectProduct(product); }} disabled={product.soldOut}>
                   {product.imageUrl ? (
                     <div className="public-product-media"><img src={product.imageUrl} alt={product.name} loading="lazy" /></div>
                   ) : (
                     <div className="public-product-placeholder"><Icon name="leaf" size={28} /></div>
                   )}
                   <div className="public-product-copy">
+                    {product.soldOut ? <span className="product-soldout">Agotado</span> : null}
                     <span>{product.categoryName}</span>
                     <h3>{product.name}</h3>
                     <p>{product.description}</p>

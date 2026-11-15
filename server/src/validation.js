@@ -137,6 +137,17 @@ export const draftSchema = z
     }
   });
 
+export const kitchenStationCreateSchema = z.object({
+  name: z.string().trim().min(1, 'El nombre es obligatorio.').max(50),
+  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Usa un color hexadecimal.').optional().default('#c45d3a'),
+  sortOrder: z.number().int().min(-9999).max(9999).optional().default(0),
+  active: z.boolean().optional().default(true),
+});
+
+export const kitchenStationUpdateSchema = kitchenStationCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'Envía al menos un campo.');
+
 export const offlineSaleSchema = z.object({
   operationId: z.string().trim().regex(/^[A-Za-z0-9_-]{8,80}$/, 'El identificador de sincronización no es válido.'),
   occurredAt: z.string().datetime({ offset: true }).optional(),
@@ -230,6 +241,8 @@ export const categoryUpdateSchema = z
 
 export const productCreateSchema = z.object({
   categoryId: z.number().int().positive('Selecciona una categoría válida.'),
+  stationId: z.number().int().positive().nullable().optional(),
+  prepSeconds: z.number().int().min(0).max(7200).optional().default(0),
   name: z.string().trim().min(1, 'El nombre del producto es obligatorio.').max(80, 'El nombre no puede exceder 80 caracteres.'),
   description: text(300, 'La descripción').optional().default(''),
   priceCents: moneyCents,
@@ -243,6 +256,8 @@ export const productUpdateSchema = z
     name: z.string().trim().min(1, 'El nombre del producto es obligatorio.').max(80, 'El nombre no puede exceder 80 caracteres.').optional(),
     description: text(300, 'La descripción').optional(),
     priceCents: moneyCents.optional(),
+    stationId: z.number().int().positive().nullable().optional(),
+    prepSeconds: z.number().int().min(0).max(7200).optional(),
     sortOrder: z.number().int('El orden debe ser un entero.').min(-9999).max(9999).optional(),
     active: z.boolean().optional(),
   })

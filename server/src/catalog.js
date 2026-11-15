@@ -1,5 +1,7 @@
 import { serializeCategory, serializeProduct } from './serializers.js';
 import { getProductModifierGroups } from './modifiers.js';
+import { productStockAvailability } from './inventory.js';
+import { featureEnabled } from './features.js';
 
 export function getCatalog(db, config) {
   const categories = db
@@ -18,6 +20,9 @@ export function getCatalog(db, config) {
     db,
     products.map((product) => Number(product.id)),
   );
+  const stock = featureEnabled(db, 'inventory_sold_out')
+    ? productStockAvailability(db, products.map((product) => Number(product.id)))
+    : new Map();
   const byCategory = new Map();
   for (const category of categories) {
     byCategory.set(Number(category.id), {
@@ -29,6 +34,8 @@ export function getCatalog(db, config) {
     byCategory.get(Number(product.category_id))?.products.push({
       ...serializeProduct(product),
       modifierGroups: modifierGroups.get(Number(product.id)) ?? [],
+      soldOut: Boolean(stock.get(Number(product.id))?.soldOut),
+      availableUnits: stock.get(Number(product.id))?.availableUnits ?? null,
     });
   }
   return {

@@ -9,6 +9,7 @@ const TABS = [
   { href: '/owner', label: 'Panel', icon: 'admin', exact: true },
   { href: '/owner/integraciones', label: 'Integraciones', icon: 'plug', feature: 'integrations' },
   { href: '/admin/pagos', label: 'Métodos de pago', icon: 'card' },
+  { href: '/admin/cocina', label: 'Estaciones', icon: 'chef', feature: 'kitchen_stations' },
   { href: '/admin/inventario', label: 'Inventario', icon: 'box', feature: 'inventory' },
   { href: '/admin/equipo', label: 'Equipo', icon: 'users' },
   { href: '/admin/ajustes', label: 'Ajustes', icon: 'settings' },

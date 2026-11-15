@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { api } from '@/lib/api';
+import { useFeatures } from '@/components/FeatureProvider';
 import { formatTime, serviceLabel } from '@/lib/format';
 
 const COLUMNS = [
@@ -20,6 +21,9 @@ function elapsedLabel(iso, now) {
 }
 
 export default function KitchenPage() {
+  const { enabled } = useFeatures();
+  const [stations, setStations] = useState([]);
+  const [stationId, setStationId] = useState('');
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -32,7 +36,7 @@ export default function KitchenPage() {
     if (silent) setRefreshing(true);
     else if (!loadedRef.current) setLoading(true);
     try {
-      const response = await api.getKitchenTickets();
+      const response = await api.getKitchenTickets(stationId || undefined);
       setTickets(response.tickets ?? []);
       setError('');
       loadedRef.current = true;
@@ -42,7 +46,7 @@ export default function KitchenPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [stationId]);
 
   useEffect(() => {
     void load();
@@ -53,6 +57,11 @@ export default function KitchenPage() {
       clearInterval(clock);
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!enabled('kitchen_stations')) return;
+    api.getKitchenStations().then((response) => setStations(response.stations ?? [])).catch(() => setStations([]));
+  }, [enabled]);
 
   const itemsByStatus = useMemo(() => {
     const groups = { sent: [], preparing: [], ready: [] };
@@ -98,6 +107,17 @@ export default function KitchenPage() {
         </div>
       </div>
 
+      {enabled('kitchen_stations') && stations.length > 0 ? (
+        <div className="category-strip kitchen-station-strip" role="tablist" aria-label="Estaciones de cocina">
+          <button type="button" role="tab" aria-selected={!stationId} className={`category-chip ${!stationId ? 'is-active' : ''}`} onClick={() => setStationId('')}>Todas <span>{tickets.length}</span></button>
+          {stations.map((station) => (
+            <button key={station.id} type="button" role="tab" aria-selected={stationId === String(station.id)} className={`category-chip ${stationId === String(station.id) ? 'is-active' : ''}`} onClick={() => setStationId(String(station.id))}>
+              <span className="station-dot" style={{ background: station.color }} /> {station.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {error ? (
         <div className="alert alert-error">
           <Icon name="alert" size={19} />
@@ -133,6 +153,7 @@ export default function KitchenPage() {
                             {serviceLabel(item.ticket)}
                           </span>
                           <span className="kds-time">{elapsedLabel(item.sentAt, now)}</span>
+                          {item.targetAt ? <span className={`kds-target ${new Date(item.targetAt).getTime() < now ? 'is-late' : ''}`}>{new Date(item.targetAt).getTime() < now ? 'Tarde' : 'Meta ' + formatTime(item.targetAt)}</span> : null}
                         </div>
                         <div className="kds-item-line">
                           <span className="kds-qty">{item.quantity}</span>
