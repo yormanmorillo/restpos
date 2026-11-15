@@ -4,14 +4,21 @@ import { useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import { FeatureGate } from '@/components/FeatureProvider';
 import { api } from '@/lib/api';
+import QRCode from 'qrcode';
 
 function QrContent() {
   const [tables, setTables] = useState([]);
   const [origin, setOrigin] = useState('');
   const [copied, setCopied] = useState(null);
+  const [images, setImages] = useState({});
   useEffect(() => {
     setOrigin(window.location.origin);
-    api.getTables().then((response) => setTables(response.tables ?? [])).catch(() => {});
+    api.getTables().then(async (response) => {
+      const list = response.tables ?? [];
+      setTables(list);
+      const entries = await Promise.all(list.map(async (table) => [table.id, await QRCode.toDataURL(`${window.location.origin}/mesa/${table.qrToken}`, { margin: 1, width: 180 })]));
+      setImages(Object.fromEntries(entries));
+    }).catch(() => {});
   }, []);
   async function copy(table) {
     const url = `${origin}/mesa/${table.qrToken}`;
@@ -26,6 +33,7 @@ function QrContent() {
           <div key={table.id} className="panel qr-card">
             <span className="qr-table-name">{table.name}</span>
             <span className="field-hint">{table.areaName || 'Sin área'} · {table.capacity} personas</span>
+            {images[table.id] ? <img className="qr-image" src={images[table.id]} alt={`QR de ${table.name}`} /> : <span className="qr-image-placeholder">Generando QR…</span>}
             <code className="qr-link">/mesa/{table.qrToken}</code>
             <div className="qr-actions">
               <button type="button" className="btn btn-small btn-primary" onClick={() => void copy(table)}><Icon name="copy" size={15} /> {copied === table.id ? 'Copiado' : 'Copiar enlace'}</button>

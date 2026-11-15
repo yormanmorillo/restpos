@@ -5850,3 +5850,6 @@ h1 { font-weight: 700; }
 .waiter-table-top { display: flex; align-items: center; justify-content: space-between; }
 .waiter-table span { color: var(--ink-faint); font-size: 0.64rem; }
 .waiter-table strong { font-size: 0.8rem; }
+
+.qr-image { width: 150px; height: 150px; align-self: center; border-radius: 6px; }
+.qr-image-placeholder { width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; align-self: center; background: var(--surface-soft); color: var(--ink-faint); font-size: 0.65rem; }
