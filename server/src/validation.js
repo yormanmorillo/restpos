@@ -139,6 +139,19 @@ export const draftSchema = z
     }
   });
 
+export const giftCardCreateSchema = z.object({
+  code: z.string().trim().max(60).optional().default(''),
+  amountCents: z.number().int().positive('El monto debe ser positivo.'),
+  customerId: z.number().int().positive().nullable().optional(),
+  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+  notes: text(300, 'Las notas').optional().default(''),
+});
+
+export const giftCardUpdateSchema = z.object({
+  active: z.boolean().optional(),
+  notes: text(300, 'Las notas').optional(),
+}).refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');
+
 export const customerCreateSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(100),
   phone: text(30, 'El teléfono').optional().default(''),
@@ -230,6 +243,7 @@ export const courtesySchema = z.object({
 
 export const payOrderSchema = z.object({
   splitId: z.number().int().positive('La parte de la cuenta no es válida.').optional(),
+  giftCardCode: z.string().trim().max(60).optional(),
   paymentMethod: z
     .string({ error: 'Selecciona un método de pago.' })
     .trim()

@@ -7,6 +7,7 @@ import { calculateChange, getSuggestedCashAmounts } from '@restpos/shared/pricin
 import { centsToInput, parseMoneyToCents } from '@restpos/shared/money';
 import { api } from '@/lib/api';
 import { formatMoney, paymentLabel, serviceLabel } from '@/lib/format';
+import { useFeatures } from '@/components/FeatureProvider';
 import { compressImage, validateImageFile } from '@/lib/image';
 
 const TIP_PRESETS = [
@@ -28,6 +29,7 @@ function methodIcon(method) {
 }
 
 export default function PaymentModal({ open, onClose, order, split = null, onSetTip, onConfirm, onRefresh }) {
+  const { enabled } = useFeatures();
   const paymentOrder = split
     ? { ...order, items: split.items, totalCents: split.totalCents, amountPaidCents: split.amountPaidCents, payments: (order.payments ?? []).filter((payment) => Number(payment.splitId) === Number(split.id)) }
     : order;
@@ -49,6 +51,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
   const [requireShift, setRequireShift] = useState(true);
   const [shiftLoading, setShiftLoading] = useState(false);
   const [shiftError, setShiftError] = useState('');
+  const [giftCardCode, setGiftCardCode] = useState('');
 
   const paidCents = Number(paymentOrder.amountPaidCents ?? 0);
   const balanceCents = Math.max(0, Number(paymentOrder.totalCents) - paidCents);
@@ -75,7 +78,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
     Promise.all([api.getPaymentMethods(), api.getCurrentShift(), api.getFeatures()])
       .then(([methodsResponse, shiftResponse, featuresResponse]) => {
         const active = (methodsResponse.methods ?? []).filter((method) => method.active);
-        setMethods(active);
+        setMethods(active.filter((method) => method.code !== 'gift_card' || enabled('gift_cards')));
         setMethodCode(active.find((method) => method.code === 'efectivo')?.code ?? active[0]?.code ?? '');
         setShiftOpen(Boolean(shiftResponse.shift));
         setRequireShift(featuresResponse.features?.require_shift !== 'false');
@@ -173,6 +176,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
     if (amountError) { setError(amountError); return; }
     if (cashError) { setError(cashError); return; }
     if (!selectedMethod) { setError('Selecciona un método de pago.'); return; }
+    if (selectedMethod.code === 'gift_card' && !giftCardCode.trim()) { setError('Ingresa el código de la gift card.'); return; }
     setPaying(true);
     setError('');
     try {
@@ -182,6 +186,7 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
         ...(isCash ? { cashReceivedCents: receivedCents } : {}),
         photos: selectedMethod.allowsPhoto ? photoFiles : [],
         ...(split ? { splitId: split.id } : {}),
+        ...(selectedMethod.code === 'gift_card' ? { giftCardCode: giftCardCode.trim() } : {}),
       });
       setPhotoFiles([]);
       if (updated?.status === 'abierta') {
@@ -345,6 +350,14 @@ export default function PaymentModal({ open, onClose, order, split = null, onSet
               </div>
             </div>
           )}
+
+          {selectedMethod?.code === 'gift_card' ? (
+            <section className="payment-section">
+              <h3>Gift card</h3>
+              <label className="field"><span className="field-label">Código</span><input className="input" value={giftCardCode} onChange={(event) => setGiftCardCode(event.target.value.toUpperCase())} placeholder="GC-XXXXX" autoComplete="off" /></label>
+              <p className="field-hint">Se descontará del saldo de la gift card.</p>
+            </section>
+          ) : null}
 
           {selectedMethod?.allowsPhoto ? (
             <section className="payment-section photo-section">

@@ -12,6 +12,7 @@ import { resolveActivePaymentMethod } from './payment-methods.js';
 import { consumeInventoryForOrder, productStockAvailability } from './inventory.js';
 import { featureEnabled } from './features.js';
 import { awardLoyaltyForOrder, reverseLoyaltyForOrder } from './customers.js';
+import { redeemGiftCard } from './gift-cards.js';
 import { listOrderSplits } from './splits.js';
 
 const MAX_DISCOUNT_BPS = { server: 1000, cashier: 1000, manager: 2500, admin: 10000, owner: 10000 };
@@ -602,6 +603,9 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     }
 
     const paymentMethod = resolveActivePaymentMethod(db, input.paymentMethod);
+    if (paymentMethod.code === 'gift_card' && !featureEnabled(db, 'gift_cards')) {
+      throw conflict('Las gift cards no están activas.');
+    }
     const shift = requireOpenShiftForPayment(db);
     const alreadyPaid = Number(raw.amount_paid_cents || 0);
     const splits = db.prepare('SELECT * FROM order_splits WHERE order_id = ? ORDER BY id').all(id);
@@ -641,11 +645,16 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
     }
 
     const timestamp = now.toISOString();
+    const giftCardCode = paymentMethod.code === 'gift_card' ? String(input.giftCardCode ?? '').trim() : null;
+    if (paymentMethod.code === 'gift_card') {
+      if (!giftCardCode) throw validationError('Ingresa el código de la gift card.');
+      redeemGiftCard(db, giftCardCode, amountCents, timestamp);
+    }
     db.prepare(`
       INSERT INTO payments
-        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id,
+        (order_id, shift_id, staff_id, payment_method, method_name, method_kind, split_id, gift_card_code,
          amount_cents, cash_received_cents, change_cents, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       shift?.id ?? null,
@@ -654,6 +663,7 @@ export function payOrder(db, config, id, input, { now = new Date(), staffId = nu
       paymentMethod.name,
       paymentMethod.kind,
       split?.id ?? null,
+      giftCardCode,
       amountCents,
       cashReceivedCents,
       changeCents,

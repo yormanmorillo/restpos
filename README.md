@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **99 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **102 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -189,8 +189,9 @@ Estas funciones están apagadas por defecto y se activan desde **Ajustes → Fun
 - **Agotados por inventario**: si la receta no alcanza para una unidad, el producto se marca agotado y no se puede agregar a pedidos nuevos.
 - **Clientes y fidelidad (primer bloque):** directorio, búsqueda, historial y puntos automáticos por consumo; el cliente se asigna desde el POS.
 - **Reservas y lista de espera:** agenda por fecha, estados, asignación opcional de mesa y fila de espera con tiempo estimado.
+- **Gift cards:** emisión con código, saldo, activación/desactivación y cobro como método de pago.
 - Estaciones y agotados están apagados por defecto y se activan en **Funciones activables**.
-- Pendientes de Fase 2: gift cards, cupones, combos, happy hour, canje de puntos, pedidos QR y vista móvil de mesero.
+- Pendientes de Fase 2: cupones, promociones, combos, happy hour, canje de puntos, pedidos QR y vista móvil de mesero.
 
 ## Costa Rica
 

@@ -82,6 +82,10 @@ export const api = {
 
   getFeatures: () => request('/features'),
   getCatalog: () => request('/catalog'),
+  getGiftCards: () => request('/gift-cards'),
+  getGiftCard: (code) => request(`/gift-cards/${encodeURIComponent(code)}`),
+  createGiftCard: (body) => request('/gift-cards', { method: 'POST', body }),
+  updateGiftCard: (id, body) => request(`/gift-cards/${id}`, { method: 'PATCH', body }),
   getReservations: (date) => request(`/reservations${queryString({ date })}`),
   createReservation: (body) => request('/reservations', { method: 'POST', body }),
   updateReservation: (id, body) => request(`/reservations/${id}`, { method: 'PATCH', body }),

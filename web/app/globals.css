@@ -5786,3 +5786,15 @@ h1 { font-weight: 700; }
 .reservation-wait-form { padding: 16px; display: flex; flex-direction: column; gap: 9px; }
 .reservation-wait-form h2 { font-size: 1rem; }
 @media (max-width: 900px) { .reservation-wait-layout { grid-template-columns: 1fr; } .reservation-row { flex-wrap: wrap; } }
+
+.gift-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; }
+.gift-list-panel, .gift-create-panel { padding: 16px; display: flex; flex-direction: column; gap: 9px; }
+.gift-list-panel h2, .gift-create-panel h2 { font-size: 1rem; }
+.gift-card-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.gift-card-row:last-child { border-bottom: 0; }
+.gift-card-row.is-inactive { opacity: 0.5; }
+.gift-code { min-width: 105px; padding: 4px 6px; border-radius: 5px; background: var(--surface-soft); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; }
+.gift-card-row > div { display: flex; flex: 1; flex-direction: column; gap: 1px; }
+.gift-card-row strong { font-size: 0.74rem; }
+.gift-card-row span { color: var(--ink-faint); font-size: 0.62rem; }
+@media (max-width: 900px) { .gift-layout { grid-template-columns: 1fr; } }

@@ -186,6 +186,21 @@ CREATE TABLE IF NOT EXISTS shifts (
 CREATE UNIQUE INDEX IF NOT EXISTS shifts_one_open ON shifts(status) WHERE status = 'open';
 CREATE INDEX IF NOT EXISTS shifts_opened_at_idx ON shifts(opened_at);
 
+CREATE TABLE IF NOT EXISTS gift_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  initial_cents INTEGER NOT NULL CHECK (initial_cents >= 0),
+  balance_cents INTEGER NOT NULL CHECK (balance_cents >= 0),
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  expires_at TEXT,
+  notes TEXT NOT NULL DEFAULT '',
+  created_by_staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS gift_cards_active_idx ON gift_cards(active, code);
+
 CREATE TABLE IF NOT EXISTS reservations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
@@ -226,6 +241,7 @@ CREATE TABLE IF NOT EXISTS payments (
   method_name TEXT NOT NULL DEFAULT '',
   method_kind TEXT NOT NULL DEFAULT 'other',
   split_id INTEGER REFERENCES order_splits(id) ON DELETE SET NULL,
+  gift_card_code TEXT,
   amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
   cash_received_cents INTEGER CHECK (cash_received_cents IS NULL OR cash_received_cents >= 0),
   change_cents INTEGER CHECK (change_cents IS NULL OR change_cents >= 0),
@@ -619,6 +635,7 @@ export function migrate(db) {
   ensureColumn(db, 'payments', 'method_name', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'payments', 'method_kind', "TEXT NOT NULL DEFAULT 'other'");
   ensureColumn(db, 'payments', 'split_id', 'INTEGER REFERENCES order_splits(id)');
+  ensureColumn(db, 'payments', 'gift_card_code', 'TEXT');
 
   ensureColumn(db, 'order_items', 'status', "TEXT NOT NULL DEFAULT 'pending'");
   ensureColumn(db, 'order_items', 'course', 'INTEGER NOT NULL DEFAULT 1');
@@ -840,6 +857,7 @@ export function seedOperationalData(db, { now = new Date().toISOString() } = {})
         ['sinpe', 'SINPE Móvil', 'transfer', 'phone', 1, 30],
         ['transferencia', 'Transferencia bancaria', 'transfer', 'wallet', 1, 40],
         ['otro', 'Otro', 'other', 'receipt', 0, 50],
+        ['gift_card', 'Gift card', 'other', 'wallet', 0, 60],
       ]) {
         insertMethod.run(...method, now, now);
       }

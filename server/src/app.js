@@ -50,6 +50,8 @@ import {
   kitchenStationUpdateSchema,
   customerCreateSchema,
   customerUpdateSchema,
+  giftCardCreateSchema,
+  giftCardUpdateSchema,
   reservationCreateSchema,
   reservationUpdateSchema,
   waitlistCreateSchema,
@@ -94,6 +96,7 @@ import { requireFeature } from './features.js';
 import { createOrderSplits, clearOrderSplits } from './splits.js';
 import { moveOrderToTable, mergeOrders, transferItems } from './table-ops.js';
 import { createOfflineSale } from './offline.js';
+import { listGiftCards, findGiftCard, createGiftCard, updateGiftCard } from './gift-cards.js';
 import { listReservations, createReservation, updateReservation, listWaitlist, createWaitlistEntry, updateWaitlistEntry } from './reservations.js';
 import { listCustomers, getCustomer, createCustomer, updateCustomer } from './customers.js';
 import { serializeProduct } from './serializers.js';
@@ -171,6 +174,27 @@ export function createApp({ db, config }) {
 
   api.get('/features', (req, res) => {
     res.json({ features: safeFeatures(db) });
+  });
+
+  api.get('/gift-cards', requireFeature(db, 'gift_cards'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    res.json({ giftCards: listGiftCards(db) });
+  });
+
+  api.get('/gift-cards/:code', requireFeature(db, 'gift_cards'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    const card = findGiftCard(db, req.params.code);
+    if (!card) throw new AppError(404, 'NOT_FOUND', 'No se encontró la gift card.');
+    res.json({ giftCard: card });
+  });
+
+  api.post('/gift-cards', requireFeature(db, 'gift_cards'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const input = parseOrThrow(giftCardCreateSchema, req.body);
+    res.status(201).json({ giftCard: createGiftCard(db, input, req.staff.id) });
+  });
+
+  api.patch('/gift-cards/:id', requireFeature(db, 'gift_cards'), requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    const input = parseOrThrow(giftCardUpdateSchema, req.body);
+    res.json({ giftCard: updateGiftCard(db, id, input, req.staff.id) });
   });
 
   api.get('/reservations', requireFeature(db, 'reservations'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {

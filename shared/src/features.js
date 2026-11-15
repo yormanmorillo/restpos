@@ -77,6 +77,12 @@ export const FEATURES = {
     phase: 2,
     defaultEnabled: false,
   },
+  gift_cards: {
+    label: 'Gift cards',
+    description: 'Emisión y cobro con tarjetas de regalo.',
+    phase: 2,
+    defaultEnabled: false,
+  },
   reservations: {
     label: 'Reservas y lista de espera',
     description: 'Reservas de mesa y administración de espera.',
