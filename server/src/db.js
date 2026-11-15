@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { FEATURE_KEYS, FEATURES, featureSettingKey } from '@restpos/shared/features';
@@ -640,6 +641,7 @@ export function migrate(db) {
 
   ensureColumn(db, 'restaurant_tables', 'area_id', 'INTEGER REFERENCES areas(id)');
   ensureColumn(db, 'restaurant_tables', 'position', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'restaurant_tables', 'qr_token', 'TEXT');
   ensureColumn(db, 'restaurant_tables', 'active', 'INTEGER NOT NULL DEFAULT 1');
 
   ensureColumn(db, 'orders', 'delivery', 'INTEGER NOT NULL DEFAULT 0');
@@ -995,6 +997,7 @@ export function seedOperationalData(db, { now = new Date().toISOString() } = {})
       }
     }
   });
+  ensureTableQrTokens(db);
 }
 
 export function repairTableStatuses(db) {
@@ -1012,4 +1015,14 @@ export function repairTableStatuses(db) {
       WHERE o.table_id = restaurant_tables.id AND o.status = 'abierta'
     );
   `);
+}
+
+
+export function ensureTableQrTokens(db) {
+  const rows = db.prepare("SELECT id FROM restaurant_tables WHERE qr_token IS NULL OR qr_token = ''").all();
+  const update = db.prepare('UPDATE restaurant_tables SET qr_token = ? WHERE id = ?');
+  for (const row of rows) {
+    update.run(randomBytes(16).toString('hex'), row.id);
+  }
+  return rows.length;
 }

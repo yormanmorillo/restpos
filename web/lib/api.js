@@ -195,6 +195,8 @@ export const api = {
   createTable: (body) => request('/admin/tables', { method: 'POST', body }),
   updateTable: (id, body) => request(`/admin/tables/${id}`, { method: 'PATCH', body }),
 
+  getPublicTable: (token) => request(`/public/tables/${token}`, { skipUnauthorizedEvent: true }),
+  createPublicTableOrder: (token, body) => request(`/public/tables/${token}/orders`, { method: 'POST', body, skipUnauthorizedEvent: true }),
   getPublicRestaurant: () => request('/public/restaurant', { skipUnauthorizedEvent: true }),
   getPublicReceipt: (token) => request(`/public/receipts/${token}`, { skipUnauthorizedEvent: true }),
   createPublicOrder: (body) => request('/public/orders', { method: 'POST', body, skipUnauthorizedEvent: true }),

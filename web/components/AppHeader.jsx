@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 import { api } from '@/lib/api';
 import { ROLE_LABELS, useAuth } from './auth/AuthProvider';
+import { useFeatures } from './FeatureProvider';
 
 const NAV_ITEMS = [
   { href: '/owner', label: 'Propietario', icon: 'admin', roles: ['owner'] },
@@ -13,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/cocina', label: 'Cocina', icon: 'chef', roles: ['owner', 'admin', 'manager', 'cashier', 'kitchen'] },
   { href: '/caja', label: 'Caja', icon: 'cash', roles: ['owner', 'admin', 'manager', 'cashier'] },
   { href: '/historial', label: 'Historial', icon: 'history', roles: ['owner', 'admin', 'manager', 'cashier'] },
+  { href: '/mesonero', label: 'Mesero', icon: 'users', roles: ['owner', 'admin', 'manager', 'cashier', 'server'], feature: 'qr_table_order' },
   { href: '/admin', label: 'Administración', icon: 'admin', roles: ['owner', 'admin', 'manager'] },
 ];
 
@@ -23,6 +25,7 @@ function initials(name = '') {
 export default function AppHeader() {
   const pathname = usePathname();
   const { staff, logout } = useAuth();
+  const { enabled } = useFeatures();
   const [now, setNow] = useState(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [shift, setShift] = useState(null);
@@ -60,7 +63,7 @@ export default function AppHeader() {
 
   if (!staff) return null;
 
-  const items = NAV_ITEMS.filter((item) => item.roles.includes(staff.role));
+  const items = NAV_ITEMS.filter((item) => item.roles.includes(staff.role) && (!item.feature || enabled(item.feature)));
   const clock = now
     ? `${new Intl.DateTimeFormat('es-CR', { weekday: 'short', day: 'numeric', month: 'short' }).format(now)} · ${new Intl.DateTimeFormat('es-CR', { hour: '2-digit', minute: '2-digit' }).format(now)}`
     : '';

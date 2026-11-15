@@ -1,0 +1,43 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { hashPin } from '../src/auth.js';
+import { makeContext } from './helpers.js';
+
+let ctx;
+let owner;
+beforeEach(async () => {
+  ctx = await makeContext();
+  const now = new Date().toISOString();
+  const result = ctx.db.prepare("INSERT INTO staff (name, role, pin_hash, active, created_at, updated_at) VALUES ('Owner', 'owner', ?, 1, ?, ?)")
+    .run(hashPin('468135'), now, now);
+  owner = request.agent(ctx.app);
+  await owner.post('/api/auth/login').send({ staffId: Number(result.lastInsertRowid), pin: '468135' });
+});
+afterEach(() => { ctx.db.close(); });
+
+describe('pedidos QR', () => {
+  it('requiere la función activa', async () => {
+    const table = ctx.db.prepare('SELECT qr_token FROM restaurant_tables LIMIT 1').get();
+    expect((await ctx.agent.get(`/api/public/tables/${table.qr_token}`)).status).toBe(404);
+  });
+
+  it('crea y amplía un pedido de mesa desde el QR', async () => {
+    await owner.patch('/api/settings').send({ settings: { feature_qr_table_order: 'true' } });
+    const table = ctx.db.prepare('SELECT id, qr_token FROM restaurant_tables LIMIT 1').get();
+    expect(table.qr_token).toBeTruthy();
+    const menu = await ctx.agent.get(`/api/public/tables/${table.qr_token}`);
+    expect(menu.status).toBe(200);
+    expect(menu.body.table.id).toBe(table.id);
+    const first = await ctx.agent.post(`/api/public/tables/${table.qr_token}/orders`).send({ customerName: 'Mesa 1', items: [{ productId: 1, quantity: 1 }] });
+    expect(first.status).toBe(201);
+    expect(first.body.order.status).toBe('abierta');
+    const order = ctx.db.prepare('SELECT * FROM orders WHERE id = ?').get(first.body.order.id);
+    expect(order.source).toBe('qr');
+    expect(order.table_id).toBe(table.id);
+    const second = await ctx.agent.post(`/api/public/tables/${table.qr_token}/orders`).send({ items: [{ productId: 2, quantity: 1 }] });
+    expect(second.status).toBe(201);
+    expect(second.body.order.id).toBe(first.body.order.id);
+    expect(ctx.db.prepare('SELECT COUNT(*) AS c FROM order_items WHERE order_id = ?').get(first.body.order.id).c).toBe(2);
+    expect(ctx.db.prepare("SELECT COUNT(*) AS c FROM order_items WHERE order_id = ? AND status = 'sent'").get(first.body.order.id).c).toBe(2);
+  });
+});

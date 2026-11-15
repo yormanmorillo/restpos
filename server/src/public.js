@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { getCatalog } from './catalog.js';
 import { createOrder, updateOrderDraft, cancelOrder, getOrder } from './orders.js';
 import { getBooleanSetting, getSetting, publicFeatures } from './settings.js';
-import { parseOrThrow, publicOrderSchema } from './validation.js';
+import { parseOrThrow, publicOrderSchema, publicTableOrderSchema } from './validation.js';
+import { findTableByToken, createQrTableOrder } from './qr-orders.js';
+import { featureEnabled } from './features.js';
 import { AppError, conflict, notFound } from './errors.js';
 import { imageFilePath } from './uploads.js';
 
@@ -75,6 +77,28 @@ export function registerPublicRoutes(router, db, config) {
         timezone: config.timezone,
       },
     });
+  });
+
+  router.get('/public/tables/:token', (req, res) => {
+    if (!featureEnabled(db, 'qr_table_order')) throw notFound('No se encontró la mesa.');
+    const table = findTableByToken(db, req.params.token);
+    const catalog = getCatalog(db, config);
+    const openOrder = db.prepare("SELECT id, order_number FROM orders WHERE table_id = ? AND status = 'abierta'").get(table.id);
+    res.json({
+      restaurant: { name: getSetting(db, 'restaurant_name', 'Casa Roble'), currency: config.currency, taxRateBps: config.taxRateBps },
+      table: { id: Number(table.id), name: table.name, areaName: table.area_name ?? null },
+      categories: catalog.categories,
+      openOrder: openOrder ? { id: Number(openOrder.id), orderNumber: openOrder.order_number } : null,
+    });
+  });
+
+  router.post('/public/tables/:token/orders', (req, res) => {
+    if (!featureEnabled(db, 'qr_table_order')) throw notFound('No se encontró la mesa.');
+    rateLimit(req);
+    const input = parseOrThrow(publicTableOrderSchema, req.body);
+    const { table, orderId } = createQrTableOrder(db, config, req.params.token, input);
+    const order = getOrder(db, orderId);
+    res.status(201).json({ table: { id: Number(table.id), name: table.name }, order: { id: order.id, orderNumber: order.orderNumber, totalCents: order.totalCents, status: order.status } });
   });
 
   router.get('/public/restaurant', (req, res) => {

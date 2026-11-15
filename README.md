@@ -136,7 +136,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **108 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **110 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -194,8 +194,10 @@ Estas funciones están apagadas por defecto y se activan desde **Ajustes → Fun
 - **Canje de puntos:** pagos parciales o totales con puntos, descontando el saldo del cliente.
 - **Happy hour:** promociones automáticas por días y horario.
 - **Combos:** productos compuestos con precio especial, componentes e inventario descontado por componente.
+- **Pedidos QR por mesa:** cada mesa tiene un enlace único, el cliente pide desde su teléfono y el pedido entra a cocina.
+- **Vista móvil de mesero:** mesas abiertas, mesas disponibles y acceso directo a la cuenta.
 - Estaciones y agotados están apagados por defecto y se activan en **Funciones activables**.
-- Pendientes de Fase 2: pedidos QR y vista móvil de mesero.
+- Fase 2 completa: KDS, clientes, reservas, gift cards, cupones, puntos, happy hour, combos, QR y mesero móvil.
 
 ## Costa Rica
 

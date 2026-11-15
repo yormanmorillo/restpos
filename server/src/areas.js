@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { conflict, notFound, validationError } from './errors.js';
 
 export function listAreas(db) {
@@ -65,6 +66,7 @@ function serializeTable(row) {
     areaId: row.area_id === null ? null : Number(row.area_id),
     areaName: row.area_name ?? null,
     position: Number(row.position ?? 0),
+    qrToken: row.qr_token ?? null,
     active: Boolean(row.active),
     openOrder: row.open_order_id
       ? { id: Number(row.open_order_id), orderNumber: row.open_order_number }
@@ -93,9 +95,9 @@ export function createTable(db, input, now = new Date().toISOString()) {
     if (!area) throw notFound('No se encontró el área.');
   }
   const result = db.prepare(`
-    INSERT INTO restaurant_tables (name, capacity, status, area_id, position, active, created_at)
-    VALUES (?, ?, 'libre', ?, ?, ?, ?)
-  `).run(input.name, input.capacity, input.areaId ?? null, input.position ?? 0, input.active === false ? 0 : 1, now);
+    INSERT INTO restaurant_tables (name, capacity, status, area_id, position, qr_token, active, created_at)
+    VALUES (?, ?, 'libre', ?, ?, ?, ?, ?)
+  `).run(input.name, input.capacity, input.areaId ?? null, input.position ?? 0, randomBytes(16).toString('hex'), input.active === false ? 0 : 1, now);
   return listAdminTables(db).find((table) => table.id === Number(result.lastInsertRowid));
 }
 

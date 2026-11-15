@@ -158,6 +158,16 @@ export const promotionCreateSchema = z.object({
 
 export const promotionUpdateSchema = promotionCreateSchema.partial().refine((value) => Object.keys(value).length > 0, 'Envía al menos un cambio.');
 
+export const publicTableOrderSchema = z.object({
+  customerName: text(100, 'El nombre').optional().default(''),
+  notes: text(300, 'Las notas').optional().default(''),
+  items: z.array(z.object({
+    productId: z.number().int().positive(),
+    quantity: z.number().int().min(1).max(30),
+    notes: text(200, 'La nota').optional().default(''),
+  })).min(1, 'Agrega al menos un producto.').max(50),
+});
+
 export const applyPromotionSchema = z.object({ code: z.string().trim().min(1, 'Ingresa el código.') });
 
 export const giftCardCreateSchema = z.object({
