@@ -59,6 +59,12 @@ export default function PosScreen() {
     return () => clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    if (activeOrder) return undefined;
+    const poll = setInterval(() => void loadData({ silent: true }), 15_000);
+    return () => clearInterval(poll);
+  }, [activeOrder, loadData]);
+
   async function fetchOrder(id) {
     const response = await api.getOrder(id);
     setActiveOrder(response.order);
@@ -166,6 +172,7 @@ export default function PosScreen() {
     <>
       <HomeView
         tables={tables}
+        onQrRefresh={() => void loadData({ silent: true })}
         takeawayOrders={takeawayOrders}
         loading={loading && !loadedRef.current}
         error={error}

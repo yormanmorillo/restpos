@@ -15,8 +15,12 @@ export function findTableByToken(db, token) {
 export function createQrTableOrder(db, config, token, input) {
   const table = findTableByToken(db, token);
   let order = db.prepare("SELECT * FROM orders WHERE table_id = ? AND status = 'abierta'").get(table.id);
-  if (order && (Number(order.amount_paid_cents) > 0 || db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(order.id).count > 0)) {
-    throw conflict('La cuenta de esta mesa ya está en cobro. Pide apoyo al mesero.');
+  if (order) {
+    const splitCount = Number(db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(order.id).count);
+    const checkCount = Number(db.prepare('SELECT COUNT(*) AS count FROM order_checks WHERE order_id = ?').get(order.id).count);
+    if (Number(order.amount_paid_cents) > 0 || splitCount > 0 || checkCount > 0) {
+      throw conflict('Esta mesa ya tiene la cuenta dividida o en cobro. Pide apoyo al mesero.');
+    }
   }
   const lines = input.items.map((item) => ({
     clientKey: `qr-${randomUUID()}`,

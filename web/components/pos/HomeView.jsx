@@ -33,7 +33,7 @@ function TableCard({ table, onOpen, disabled, timeZone }) {
           <>
             <span className="table-total">{formatMoney(table.openOrder.totalCents)}</span>
             <span className="table-detail">
-              {table.openOrder.delivery ? 'Delivery · ' : ''}{table.openOrder.orderNumber} · {table.openOrder.itemCount}{' '}
+              {table.openOrder.source === 'qr' ? (table.openOrder.pendingCount > 0 ? 'QR pendiente · ' : 'QR · ') : ''}{table.openOrder.delivery ? 'Delivery · ' : ''}{table.openOrder.orderNumber} · {table.openOrder.itemCount}{' '}
               {pluralize(table.openOrder.itemCount, 'artículo', 'artículos')} ·{' '}
               {formatTime(table.openOrder.openedAt, timeZone)}
             </span>
@@ -74,6 +74,7 @@ export default function HomeView({
   onNewDelivery,
   onOpenTakeaway,
   onOpenKitchenOrder,
+  onQrRefresh,
   timeZone,
 }) {
   const [areaFilter, setAreaFilter] = useState('all');
@@ -107,6 +108,18 @@ export default function HomeView({
           </button>
         </div>
       </div>
+
+      {tables.some((table) => table.openOrder?.source === 'qr' && table.openOrder.pendingCount > 0) ? (
+        <div className="qr-alert" role="status">
+          <span className="qr-alert-icon"><Icon name="qr" size={20} /></span>
+          <div>
+            <strong>Pedido QR pendiente de aprobar</strong>
+            <p>{tables.filter((table) => table.openOrder?.source === 'qr' && table.openOrder.pendingCount > 0).map((table) => `${table.name} · ${table.openOrder.orderNumber} (${table.openOrder.pendingCount})`).join(' · ')}</p>
+          </div>
+          <button type="button" className="btn btn-small btn-secondary" onClick={() => onQrRefresh()}>Actualizar</button>
+          <button type="button" className="btn btn-small btn-primary" onClick={() => { const table = tables.find((entry) => entry.openOrder?.source === 'qr' && entry.openOrder.pendingCount > 0); if (table) onOpenTable(table); }}>Revisar</button>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="alert alert-error" role="alert">

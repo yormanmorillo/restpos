@@ -58,7 +58,7 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Costo de entrega configurable.
 - Los pedidos en línea entran al POS como pedidos abiertos, identificados como `online`.
 - Límite anti-abuso de pedidos por IP.
-- Los pedidos QR se crean pendientes; el mesero los revisa y envía a cocina. El token QR se puede rotar desde Administración.
+- Los pedidos QR se crean pendientes; el POS avisa con un banner y el mesero los revisa y envía a cocina. El token QR se puede rotar desde Administración.
 
 ### Operación y seguridad
 - Acceso por empleado con PIN numérico; las cuentas nuevas usan exactamente 6 dígitos; hash `scrypt` y sesiones con token aleatorio guardado como hash SHA-256.
@@ -138,7 +138,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **128 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **129 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 

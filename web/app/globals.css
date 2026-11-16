@@ -5890,3 +5890,11 @@ h1 { font-weight: 700; }
 .check-tools-actions { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
 
 .check-summary-actions { display: flex; gap: 10px; }
+
+.qr-alert { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid #d9b66a; border-radius: 9px; background: var(--gold-pale); }
+.qr-alert-icon { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 8px; background: #fff; color: var(--amber); }
+.qr-alert > div { display: flex; flex: 1; flex-direction: column; gap: 1px; }
+.qr-alert strong { font-size: 0.76rem; }
+.qr-alert p { color: var(--ink-soft); font-size: 0.67rem; }
+.qr-alert .btn { flex: 0 0 auto; }
+@media (max-width: 600px) { .qr-alert { flex-wrap: wrap; } }
