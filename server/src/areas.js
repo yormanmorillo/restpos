@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { conflict, notFound, validationError } from './errors.js';
+import { audit } from './audit.js';
 
 export function listAreas(db) {
   return db
@@ -135,10 +136,11 @@ export function updateTable(db, id, input) {
 }
 
 
-export function rotateTableQrToken(db, id, now = new Date().toISOString()) {
+export function rotateTableQrToken(db, id, staffId = null) {
   const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
   if (!table) throw notFound('No se encontró la mesa.');
   const token = randomBytes(16).toString('hex');
   db.prepare('UPDATE restaurant_tables SET qr_token = ? WHERE id = ?').run(token, id);
+  audit(db, staffId, 'table.qr_rotate', 'restaurant_table', id, {});
   return listAdminTables(db).find((entry) => Number(entry.id) === Number(id));
 }

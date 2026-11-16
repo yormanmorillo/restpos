@@ -301,7 +301,7 @@ export function createApp({ db, config }) {
 
   api.post('/admin/tables/:id/rotate-qr', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     const { id } = parseOrThrow(idParamsSchema, req.params);
-    res.json({ table: rotateTableQrToken(db, id) });
+    res.json({ table: rotateTableQrToken(db, id, req.staff.id) });
   });
 
   api.post('/admin/tables', requireRoles('owner', 'admin', 'manager'), (req, res) => {
