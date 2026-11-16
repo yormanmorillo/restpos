@@ -253,24 +253,24 @@ export function registerAuthRoutes(router, db, config) {
       const input = parseOrThrow(setupSchema, req.body);
       if (!config.setupToken) {
         if (config.nodeEnv === 'production') {
-          throw new AppError(503, 'SETUP_DISABLED', 'Configura SETUP_TOKEN antes de crear el administrador inicial.');
+          throw new AppError(503, 'SETUP_DISABLED', 'Configura SETUP_TOKEN antes de crear el propietario inicial.');
         }
       } else if (!safeCompare(req.get('x-setup-token') || input.setupToken, config.setupToken)) {
-        throw new AppError(403, 'SETUP_FORBIDDEN', 'Se requiere el token de instalación para crear el administrador.');
+        throw new AppError(403, 'SETUP_FORBIDDEN', 'Se requiere el token de instalación para crear el propietario.');
       }
-      assertPinStrength(input.pin, 'admin');
+      assertPinStrength(input.pin, 'owner');
       const now = new Date().toISOString();
       const result = db
         .prepare(`
           INSERT INTO staff (name, role, pin_hash, active, created_at, updated_at)
-          VALUES (?, 'admin', ?, 1, ?, ?)
+          VALUES (?, 'owner', ?, 1, ?, ?)
         `)
         .run(input.name, hashPin(input.pin), now, now);
       const staffId = Number(result.lastInsertRowid);
       createSession(db, staffId, config, res);
       db.prepare(`
         INSERT INTO audit_logs (staff_id, action, entity_type, entity_id, details, created_at)
-        VALUES (?, 'setup', 'staff', ?, 'Administrador inicial creado', ?)
+        VALUES (?, 'setup', 'staff', ?, 'Propietario inicial creado', ?)
       `).run(staffId, staffId, now);
       const staff = serializeStaff(db.prepare('SELECT * FROM staff WHERE id = ?').get(staffId));
       res.status(201).json({ staff });

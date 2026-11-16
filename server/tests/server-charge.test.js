@@ -83,6 +83,15 @@ describe('permiso de cobro del mesero', () => {
     expect((await managerAgent.patch('/api/settings').send({ settings: { server_can_charge: 'false' } })).status).toBe(200);
   });
 
+
+  it('bloquea la venta offline del mesero cuando no puede cobrar', async () => {
+    ctx.db.prepare("UPDATE settings SET value = 'true' WHERE key = 'feature_offline_mode'").run();
+    await ctx.agent.patch('/api/settings').send({ settings: { server_can_charge: 'false' } });
+    const response = await serverAgent.post('/api/offline/sales').send({ operationId: 'offline-perm-01', items: [{ productId: 1, quantity: 1 }], cashReceivedCents: 50000 });
+    expect(response.status).toBe(403);
+    expect(response.body.error.message).toContain('Los meseros no pueden cobrar');
+  });
+
   it('anular queda limitado a owner, admin y manager', async () => {
     for (const agent of [serverAgent, cashierAgent]) {
       const created = await agent.post('/api/orders').send({ type: 'llevar' });

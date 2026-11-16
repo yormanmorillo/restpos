@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { conflict, notFound, validationError } from './errors.js';
-import { createOrder, updateOrderDraft, sendOrderToKitchen } from './orders.js';
+import { createOrder, updateOrderDraft } from './orders.js';
 
 export function findTableByToken(db, token) {
   const table = db.prepare(`
@@ -39,6 +39,5 @@ export function createQrTableOrder(db, config, token, input) {
     }, { staffId: null });
     updateOrderDraft(db, config, order.id, { items: lines }, { staffId: null, staffRole: 'server' });
   }
-  sendOrderToKitchen(db, order.id, { staffId: null });
   return { table, orderId: Number(order.id) };
 }

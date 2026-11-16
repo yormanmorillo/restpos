@@ -23,6 +23,16 @@ describe('ventas offline', () => {
     expect(response.status).toBe(404);
   });
 
+
+  it('rechaza ventas offline demasiado antiguas', async () => {
+    await owner.patch('/api/settings').send({ settings: { feature_offline_mode: 'true' } });
+    const old = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const response = await ctx.agent.post('/api/offline/sales').send({
+      operationId: 'offline-old-0001', occurredAt: old, items: [{ productId: 1, quantity: 1 }], cashReceivedCents: 50000,
+    });
+    expect(response.status).toBe(422);
+  });
+
   it('sincroniza una venta de efectivo de forma idempotente', async () => {
     await owner.patch('/api/settings').send({ settings: { feature_offline_mode: 'true' } });
     const payload = {

@@ -133,3 +133,12 @@ export function updateTable(db, id, input) {
   db.prepare(`UPDATE restaurant_tables SET ${fields.join(', ')} WHERE id = ?`).run(...params);
   return listAdminTables(db).find((table) => table.id === Number(id));
 }
+
+
+export function rotateTableQrToken(db, id, now = new Date().toISOString()) {
+  const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
+  if (!table) throw notFound('No se encontró la mesa.');
+  const token = randomBytes(16).toString('hex');
+  db.prepare('UPDATE restaurant_tables SET qr_token = ? WHERE id = ?').run(token, id);
+  return listAdminTables(db).find((entry) => Number(entry.id) === Number(id));
+}

@@ -102,6 +102,7 @@ export const api = {
   createCustomer: (body) => request('/customers', { method: 'POST', body }),
   updateCustomer: (id, body) => request(`/customers/${id}`, { method: 'PATCH', body }),
   getTables: () => request('/tables'),
+  rotateTableQr: (id) => request(`/admin/tables/${id}/rotate-qr`, { method: 'POST', body: {} }),
   getAreas: () => request('/areas'),
   getOrders: (params) => request(`/orders${queryString(params)}`),
   getOrder: (id) => request(`/orders/${id}`),

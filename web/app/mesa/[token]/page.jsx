@@ -54,7 +54,7 @@ export default function TableOrderPage() {
     <main className="public-page table-order-page">
       <header className="public-header"><div><span className="eyebrow">{data.restaurant.name}</span><h1>{data.table.name}</h1><p>{data.table.areaName || 'Pedido en mesa'}</p></div><span className="table-badge">Mesa</span></header>
       {confirmation ? (
-        <section className="panel table-confirmation"><Icon name="check" size={34} /><h2>Pedido enviado</h2><p>Pedido <strong>{confirmation.order.orderNumber}</strong> · {formatMoney(confirmation.order.totalCents)}</p><p className="field-hint">El mesero puede agregar más productos o cobrar la cuenta.</p><button type="button" className="btn btn-primary" onClick={() => setConfirmation(null)}>Pedir algo más</button></section>
+        <section className="panel table-confirmation"><Icon name="check" size={34} /><h2>Pedido recibido</h2><p>Pedido <strong>{confirmation.order.orderNumber}</strong> · {formatMoney(confirmation.order.totalCents)}</p><p className="field-hint">El mesero debe aprobarlo y enviarlo a cocina. También puede agregar más productos o cobrar la cuenta.</p><button type="button" className="btn btn-primary" onClick={() => setConfirmation(null)}>Pedir algo más</button></section>
       ) : (
         <div className="table-order-layout">
           <section className="panel table-products"><h2>Menú</h2>{(data.categories ?? []).map((category) => <div key={category.id} className="table-category"><h3>{category.name}</h3><div className="table-product-grid">{category.products.map((product) => <button key={product.id} type="button" className={`table-product ${product.soldOut ? 'is-soldout' : ''}`} disabled={product.soldOut} onClick={() => add(product)}><strong>{product.name}</strong><span>{product.soldOut ? 'Agotado' : formatMoney(product.priceCents)}</span></button>)}</div></div>)}</section>
@@ -63,7 +63,7 @@ export default function TableOrderPage() {
             <label className="field"><span className="field-label">Tu nombre <small>opcional</small></span><input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} maxLength={100} /></label>
             <label className="field"><span className="field-label">Notas <small>opcional</small></span><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} /></label>
             {error ? <p className="form-error">{error}</p> : null}
-            <button type="button" className="btn btn-primary btn-charge" onClick={() => void submit()} disabled={submitting || cart.length === 0}>{submitting ? 'Enviando…' : 'Enviar a cocina'}</button>
+            <button type="button" className="btn btn-primary btn-charge" onClick={() => void submit()} disabled={submitting || cart.length === 0}>{submitting ? 'Enviando…' : 'Enviar al mesero'}</button>
             <p className="field-hint">El pago se realiza con el mesero. Los precios finales se confirman en caja.</p>
           </aside>
         </div>

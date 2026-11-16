@@ -98,7 +98,7 @@ import {
   inventoryAdjustmentSchema,
   recipeSchema,
 } from './validation.js';
-import { listAreas, createArea, updateArea, listAdminTables, createTable, updateTable } from './areas.js';
+import { listAreas, createArea, updateArea, listAdminTables, createTable, updateTable , rotateTableQrToken} from './areas.js';
 import { listPaymentMethods, createPaymentMethod, updatePaymentMethod, findPaymentMethod } from './payment-methods.js';
 import { listIntegrations, createIntegration, updateIntegration } from './integrations.js';
 import { listInventoryItems, createInventoryItem, updateInventoryItem, receiveInventory, adjustInventory, listInventoryMovements, listRecipes, saveRecipe } from './inventory.js';
@@ -297,6 +297,11 @@ export function createApp({ db, config }) {
 
   api.get('/admin/tables', requireRoles('owner', 'admin', 'manager'), (req, res) => {
     res.json({ tables: listAdminTables(db) });
+  });
+
+  api.post('/admin/tables/:id/rotate-qr', requireRoles('owner', 'admin', 'manager'), (req, res) => {
+    const { id } = parseOrThrow(idParamsSchema, req.params);
+    res.json({ table: rotateTableQrToken(db, id) });
   });
 
   api.post('/admin/tables', requireRoles('owner', 'admin', 'manager'), (req, res) => {
@@ -590,6 +595,7 @@ export function createApp({ db, config }) {
   });
 
   api.post('/offline/sales', requireFeature(db, 'offline_mode'), requireRoles('owner', 'admin', 'manager', 'cashier', 'server'), (req, res) => {
+    assertCanCharge(db, req.staff);
     const input = parseOrThrow(offlineSaleSchema, req.body);
     res.status(201).json({ order: createOfflineSale(db, config, input, req.staff.id) });
   });

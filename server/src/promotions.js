@@ -2,6 +2,7 @@ import { calculateTotals } from '@restpos/shared/pricing';
 import { conflict, notFound, validationError } from './errors.js';
 import { transaction } from './db.js';
 import { audit } from './audit.js';
+import { recalculateChecks } from './checks.js';
 
 export function serializePromotion(row) {
   return {
@@ -80,7 +81,6 @@ export function applyPromotion(db, orderId, code, staffId, now = new Date()) {
     if (!order) throw notFound('No se encontró el pedido.');
     if (order.status !== 'abierta') throw conflict('El pedido ya está cerrado.');
     if (Number(order.amount_paid_cents) > 0) throw conflict('No se puede aplicar un cupón con pagos registrados.');
-    if (db.prepare('SELECT COUNT(*) AS count FROM order_splits WHERE order_id = ?').get(orderId).count > 0) throw conflict('No se puede aplicar un cupón a una cuenta dividida.');
     const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(orderId);
     const subtotal = items.reduce((sum, item) => sum + Number(item.line_total_cents), 0);
     const promotion = activePromotion(db, code, subtotal, now);
@@ -106,6 +106,9 @@ export function applyPromotion(db, orderId, code, staffId, now = new Date()) {
       totals.totalCents + Number(order.delivery_fee_cents ?? 0), timestamp, orderId,
     );
     db.prepare('UPDATE promotions SET uses = uses + 1 WHERE id = ?').run(promotion.id);
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_checks WHERE order_id = ?').get(orderId).count > 0) {
+      recalculateChecks(db, orderId, timestamp);
+    }
     audit(db, staffId, 'order.promotion.apply', 'order', orderId, {
       promotionId: Number(promotion.id), code: promotion.code, discountCents: totals.discountCents, minSubtotalCents: promotion.min_subtotal_cents,
     });
@@ -130,6 +133,9 @@ export function removePromotion(db, orderId, staffId, now = new Date()) {
         promotion_id = NULL, promotion_code = '', subtotal_cents = ?, tax_cents = ?, tip_cents = ?,
         total_cents = ?, updated_at = ? WHERE id = ?
     `).run(totals.subtotalCents, totals.taxCents, totals.tipCents, totals.totalCents + Number(order.delivery_fee_cents ?? 0), now.toISOString(), orderId);
+    if (db.prepare('SELECT COUNT(*) AS count FROM order_checks WHERE order_id = ?').get(orderId).count > 0) {
+      recalculateChecks(db, orderId, now.toISOString());
+    }
     audit(db, staffId, 'order.promotion.remove', 'order', orderId, { code: order.promotion_code });
     return getPromotionOrder(db, orderId);
   });

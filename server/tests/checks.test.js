@@ -116,6 +116,21 @@ describe('cuentas de facturación', () => {
     expect(JSON.parse(audit.details).itemCount).toBe(2);
   });
 
+
+  it('aplica un cupón sobre cuentas y reparte el descuento', async () => {
+    ctx.db.prepare("UPDATE settings SET value = 'true' WHERE key = 'feature_promotions'").run();
+    await owner.post('/api/promotions').send({ code: 'MITAD50', name: 'Mitad', type: 'percent', value: 5000, active: true });
+    const id = await makeOrder();
+    const split = await owner.post(`/api/orders/${id}/checks/equal`).send({ count: 2 });
+    const applied = await owner.post(`/api/orders/${id}/promotion`).send({ code: 'MITAD50' });
+    expect(applied.status).toBe(200);
+    expect(applied.body.order.discountCents).toBeGreaterThan(0);
+    const sum = applied.body.order.checks.reduce((total, check) => total + check.totalCents, 0);
+    expect(sum).toBe(applied.body.order.totalCents);
+    const shares = applied.body.order.checks.map((check) => check.discountCents);
+    expect(shares.some((value) => value > 0)).toBe(true);
+  });
+
   it('un pedido sin cuentas se comporta como antes', async () => {
     const id = await makeOrder();
     const paid = await owner.post(`/api/orders/${id}/pay`).send({ paymentMethod: 'efectivo', cashReceivedCents: 50000 });

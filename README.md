@@ -58,6 +58,7 @@ Frontend **Next.js/React**, API **Express** y persistencia local con **SQLite** 
 - Costo de entrega configurable.
 - Los pedidos en línea entran al POS como pedidos abiertos, identificados como `online`.
 - Límite anti-abuso de pedidos por IP.
+- Los pedidos QR se crean pendientes; el mesero los revisa y envía a cocina. El token QR se puede rotar desde Administración.
 
 ### Operación y seguridad
 - Acceso por empleado con PIN numérico; las cuentas nuevas usan exactamente 6 dígitos; hash `scrypt` y sesiones con token aleatorio guardado como hash SHA-256.
@@ -110,7 +111,7 @@ npm install --include=dev
 npm run dev
 ```
 
-Abre <http://localhost:3000>. En el primer arranque la base se crea y se carga el menú de ejemplo, áreas, mesas y grupos de modificadores. Como no hay empleados, `/login` muestra el formulario para **crear el primer administrador**.
+Abre <http://localhost:3000>. En el primer arranque la base se crea y se carga el menú de ejemplo, áreas, mesas y grupos de modificadores. Como no hay empleados, `/login` muestra el formulario para **crear el propietario inicial**. El propietario puede activar funciones y crear al resto del equipo.
 
 Rutas útiles:
 
@@ -137,7 +138,7 @@ La app queda en <http://localhost:3000>. Para usar cookies seguras necesitas HTT
 npm test
 ```
 
-Ejecuta **123 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
+Ejecuta **128 pruebas** con SQLite en memoria. Cubren precios, autenticación y roles, modificadores, cocina, pagos parciales, turnos, pedidos en línea, reportes, catálogo y documentos ESC/POS.
 
 ### Reiniciar datos de ejemplo
 
@@ -177,7 +178,7 @@ El super admin puede activar o desactivar módulos desde **Administración → A
 
 ## Fase 1 (funciones activables)
 
-- **Cuentas de facturación**: partes iguales, por persona, por platos y cantidades compartidas; cada cuenta tiene propina, pagos y ticket propios.
+- **Cuentas de facturación**: partes iguales, por persona, por platos y cantidades compartidas; cada cuenta tiene propina, pagos y ticket propios. Los cupones se reparten entre cuentas y se liberan al cancelar.
 - **Reembolsos totales y parciales** de pedidos pagados con motivo y PIN de gerente; revierte inventario en el reembolso total, ajusta reportes y efectivo esperado.
 - **Mover mesas, unir pedidos y transferir productos individuales**, conservando las líneas y liberando la mesa origen cuando queda vacía.
 - **Modo sin conexión (primera versión):** PWA, catálogo cacheado, cola local de ventas para llevar en efectivo y sincronización idempotente al reconectar. Limitaciones y diseño completo en [docs/OFFLINE-MODE.md](docs/OFFLINE-MODE.md).

@@ -99,7 +99,7 @@ function LoginContent() {
   async function submitSetup(event) {
     event.preventDefault();
     if (!setupName.trim()) {
-      setError('Escribe el nombre del administrador.');
+      setError('Escribe el nombre del propietario.');
       return;
     }
     if (!/^\d{6}$/.test(setupPin)) {
@@ -117,7 +117,7 @@ function LoginContent() {
       setStaff(response.staff);
       router.replace('/');
     } catch (setupError) {
-      setError(setupError.message || 'No se pudo crear el administrador.');
+      setError(setupError.message || 'No se pudo crear el propietario.');
     } finally {
       setBusy(false);
     }
@@ -144,15 +144,15 @@ function LoginContent() {
         {setupMode ? (
           <form className="login-card setup-card" onSubmit={submitSetup}>
             <span className="eyebrow">Configuración inicial</span>
-            <h2>Crea tu administrador</h2>
-            <p className="login-subtitle">Este PIN será tu acceso de administrador. Podrás agregar a tu equipo después.</p>
+            <h2>Crea tu propietario</h2>
+            <p className="login-subtitle">Este PIN será tu acceso de propietario. Podrás activar funciones y agregar a tu equipo después.</p>
             <label className="field">
               <span className="field-label">Nombre</span>
               <input
                 className="input login-text-input"
                 value={setupName}
                 onChange={(event) => setSetupName(event.target.value)}
-                placeholder="Nombre del administrador"
+                placeholder="Nombre del propietario"
                 autoFocus
                 maxLength={80}
               />
@@ -195,7 +195,7 @@ function LoginContent() {
             {error ? <p className="form-error" role="alert">{error}</p> : null}
             <button type="submit" className="btn btn-primary login-submit" disabled={busy}>
               {busy ? <span className="spinner spinner-small" aria-hidden="true" /> : <Icon name="arrowLeft" size={18} className="rotate-180" />}
-              Crear administrador
+              Crear propietario
             </button>
           </form>
         ) : selectedStaff ? (

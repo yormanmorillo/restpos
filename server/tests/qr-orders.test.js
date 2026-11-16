@@ -21,6 +21,17 @@ describe('pedidos QR', () => {
     expect((await ctx.agent.get(`/api/public/tables/${table.qr_token}`)).status).toBe(404);
   });
 
+
+  it('rota el token QR e invalida el anterior', async () => {
+    ctx.db.prepare("UPDATE settings SET value = 'true' WHERE key = 'feature_qr_table_order'").run();
+    const table = ctx.db.prepare('SELECT id, qr_token FROM restaurant_tables LIMIT 1').get();
+    const rotated = await ctx.agent.post(`/api/admin/tables/${table.id}/rotate-qr`).send({});
+    expect(rotated.status).toBe(200);
+    expect(rotated.body.table.qrToken).not.toBe(table.qr_token);
+    expect((await ctx.agent.get(`/api/public/tables/${table.qr_token}`)).status).toBe(404);
+    expect((await ctx.agent.get(`/api/public/tables/${rotated.body.table.qrToken}`)).status).toBe(200);
+  });
+
   it('crea y amplía un pedido de mesa desde el QR', async () => {
     await owner.patch('/api/settings').send({ settings: { feature_qr_table_order: 'true' } });
     const table = ctx.db.prepare('SELECT id, qr_token FROM restaurant_tables LIMIT 1').get();
@@ -38,6 +49,7 @@ describe('pedidos QR', () => {
     expect(second.status).toBe(201);
     expect(second.body.order.id).toBe(first.body.order.id);
     expect(ctx.db.prepare('SELECT COUNT(*) AS c FROM order_items WHERE order_id = ?').get(first.body.order.id).c).toBe(2);
-    expect(ctx.db.prepare("SELECT COUNT(*) AS c FROM order_items WHERE order_id = ? AND status = 'sent'").get(first.body.order.id).c).toBe(2);
+    expect(ctx.db.prepare("SELECT COUNT(*) AS c FROM order_items WHERE order_id = ? AND status = 'pending'").get(first.body.order.id).c).toBe(2);
+    expect((await ctx.agent.post(`/api/orders/${first.body.order.id}/send-kitchen`).send({})).status).toBe(200);
   });
 });

@@ -20,7 +20,7 @@ export function createOfflineSale(db, config, input, staffId, now = new Date()) 
   const occurredAt = input.occurredAt ? new Date(input.occurredAt) : now;
   if (!Number.isFinite(occurredAt.getTime())) throw validationError('La fecha de la venta offline no es válida.');
   if (occurredAt.getTime() > now.getTime() + 5 * 60 * 1000) throw validationError('La fecha de la venta offline no puede estar en el futuro.');
-  if (now.getTime() - occurredAt.getTime() > 7 * 24 * 60 * 60 * 1000) throw validationError('La venta offline es demasiado antigua para sincronizarse.');
+  if (now.getTime() - occurredAt.getTime() > 12 * 60 * 60 * 1000) throw validationError('La venta offline es demasiado antigua. Solo se permiten ventas de las últimas 12 horas.');
 
   const shift = getOpenShift(db);
   if (getBooleanSetting(db, 'require_shift', true) && !shift) {

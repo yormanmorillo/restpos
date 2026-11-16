@@ -964,6 +964,9 @@ export function cancelOrder(db, id, { now = new Date(), staffId = null } = {}) {
       db.prepare('DELETE FROM order_checks WHERE order_id = ?').run(id);
       db.prepare('UPDATE orders SET precheck_tip_type = NULL, precheck_tip_value = NULL, precheck_tip_cents = NULL WHERE id = ?').run(id);
     }
+    if (raw.promotion_id) {
+      db.prepare('UPDATE promotions SET uses = MAX(0, uses - 1) WHERE id = ?').run(raw.promotion_id);
+    }
     const timestamp = now.toISOString();
     db.prepare(`
       UPDATE orders SET status = 'anulada', cancelled_at = ?, updated_at = ? WHERE id = ?

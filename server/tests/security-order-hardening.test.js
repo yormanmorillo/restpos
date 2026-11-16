@@ -214,6 +214,7 @@ describe('entradas no confiables', () => {
         .set('X-Setup-Token', 'setup-secreto')
         .send({ name: 'Admin', pin: '468135' });
       expect(allowed.status).toBe(201);
+      expect(allowed.body.staff.role).toBe('owner');
     } finally {
       db.close();
     }

@@ -46,4 +46,18 @@ describe('cupones', () => {
     const response = await ctx.agent.post(`/api/orders/${created.body.order.id}/promotion`).send({ code: 'CARO' });
     expect(response.status).toBe(409);
   });
+
+  it('libera el uso del cupón al cancelar el pedido', async () => {
+    ctx.db.prepare("UPDATE settings SET value = 'true' WHERE key = 'feature_promotions'").run();
+    await owner.post('/api/promotions').send({ code: 'UNUSO', name: 'Un uso', type: 'fixed', value: 100, maxUses: 1 });
+    const created = await owner.post('/api/orders').send({ type: 'llevar' });
+    const id = created.body.order.id;
+    await owner.patch(`/api/orders/${id}/draft`).send({ items: [line('line-promo-cancel', 1, 1)] });
+    expect((await owner.post(`/api/orders/${id}/promotion`).send({ code: 'UNUSO' })).status).toBe(200);
+    expect((await owner.post(`/api/orders/${id}/cancel`).send({})).status).toBe(200);
+    const second = await owner.post('/api/orders').send({ type: 'llevar' });
+    await owner.patch(`/api/orders/${second.body.order.id}/draft`).send({ items: [line('line-promo-cancel-2', 1, 1)] });
+    expect((await owner.post(`/api/orders/${second.body.order.id}/promotion`).send({ code: 'UNUSO' })).status).toBe(200);
+  });
+
 });
