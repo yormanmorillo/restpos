@@ -17,6 +17,7 @@ export default function PosScreen() {
   const [busyLabel, setBusyLabel] = useState('');
   const [notice, setNotice] = useState(null);
   const loadedRef = useRef(false);
+  const seenQrRef = useRef(new Set());
 
   const loadData = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
@@ -30,6 +31,15 @@ export default function PosScreen() {
       setCatalog(catalogResponse);
       setTables(tablesResponse.tables);
       setTakeawayOrders(ordersResponse.orders);
+      const pendingQr = tablesResponse.tables.filter((table) => table.openOrder?.source === 'qr' && table.openOrder.pendingCount > 0);
+      const pendingKeys = new Set(pendingQr.map((table) => `${table.openOrder.id}:${table.openOrder.pendingCount}`));
+      const fresh = pendingQr.filter((table) => !seenQrRef.current.has(`${table.openOrder.id}:${table.openOrder.pendingCount}`));
+      seenQrRef.current = new Set([...seenQrRef.current].filter((key) => pendingKeys.has(key)));
+      for (const key of pendingKeys) seenQrRef.current.add(key);
+      if (fresh.length > 0) {
+        const first = fresh[0];
+        setNotice({ type: 'success', message: `Nuevo pedido QR de ${first.name} (${first.openOrder.orderNumber}). Revísalo para enviarlo a cocina.` });
+      }
       setError('');
       loadedRef.current = true;
     } catch (loadError) {
@@ -60,10 +70,9 @@ export default function PosScreen() {
   }, [notice]);
 
   useEffect(() => {
-    if (activeOrder) return undefined;
     const poll = setInterval(() => void loadData({ silent: true }), 15_000);
     return () => clearInterval(poll);
-  }, [activeOrder, loadData]);
+  }, [loadData]);
 
   async function fetchOrder(id) {
     const response = await api.getOrder(id);
