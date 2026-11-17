@@ -89,6 +89,10 @@ function parseCookies(header = '') {
   );
 }
 
+function loginIconForRole(role) {
+  return ({ owner: 'crown', admin: 'admin', manager: 'admin', cashier: 'cash', server: 'waiter', kitchen: 'chef' })[role] ?? 'users';
+}
+
 export function serializeStaff(row) {
   if (!row) return null;
   return {
@@ -237,9 +241,9 @@ export function registerAuthRoutes(router, db, config) {
 
   router.get('/auth/options', (req, res) => {
     const staff = db
-      .prepare('SELECT id, name FROM staff WHERE active = 1 ORDER BY name')
+      .prepare('SELECT id, name, role FROM staff WHERE active = 1 ORDER BY name')
       .all()
-      .map((row) => ({ id: Number(row.id), name: row.name }));
+      .map((row) => ({ id: Number(row.id), name: row.name, icon: loginIconForRole(row.role) }));
     res.setHeader('Cache-Control', 'no-store');
     res.json({ staff });
   });

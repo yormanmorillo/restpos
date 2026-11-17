@@ -67,6 +67,12 @@ export default function Icon({ name, size = 24, className = '', strokeWidth = 1.
         <path d="M3 9h18M5 9v4M19 9v4M7 9V5h10v4M6 20v-5M18 20v-5M3 15h18" />
       </>
     ),
+    waiter: (
+      <>
+        <circle cx="12" cy="7" r="3" />
+        <path d="M6 21v-2a6 6 0 0 1 12 0v2M3 14h4l2 2h6l2-2h4M12 10v4" />
+      </>
+    ),
     users: (
       <>
         <circle cx="9" cy="8" r="3" />

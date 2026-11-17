@@ -204,7 +204,7 @@ function LoginContent() {
               <Icon name="arrowLeft" size={18} /> Cambiar empleado
             </button>
             <div className="pin-person">
-              <span className="avatar avatar-large">{initials(selectedStaff.name)}</span>
+              <span className="login-staff-icon is-large"><Icon name={selectedStaff.icon || 'users'} size={30} /></span>
               <span className="eyebrow">Acceso del equipo</span>
               <h2>Hola, {selectedStaff.name.split(' ')[0]}</h2>
               <p className="login-subtitle">Ingresa tu PIN para abrir tu sesión.</p>
@@ -254,7 +254,7 @@ function LoginContent() {
                     className="staff-login-card"
                     onClick={() => { setSelectedStaff(person); setPin(''); setError(''); }}
                   >
-                    <span className="avatar avatar-medium">{initials(person.name)}</span>
+                    <span className="login-staff-icon"><Icon name={person.icon || 'users'} size={24} /></span>
                     <span className="staff-login-name">{person.name}</span>
                     <Icon name="chevronRight" size={18} />
                   </button>
@@ -267,13 +267,4 @@ function LoginContent() {
       </section>
     </main>
   );
-}
-
-function initials(name = '') {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || '?';
 }

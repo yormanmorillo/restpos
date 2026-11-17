@@ -32,6 +32,7 @@ describe('autenticación y permisos', () => {
     expect(options.status).toBe(200);
     expect(options.body.staff).toHaveLength(1);
     expect(options.body.staff[0].role).toBeUndefined();
+    expect(options.body.staff[0].icon).toBeTruthy();
 
     const wrong = await anonymous
       .post('/api/auth/login')

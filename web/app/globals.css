@@ -5898,3 +5898,6 @@ h1 { font-weight: 700; }
 .qr-alert p { color: var(--ink-soft); font-size: 0.67rem; }
 .qr-alert .btn { flex: 0 0 auto; }
 @media (max-width: 600px) { .qr-alert { flex-wrap: wrap; } }
+
+.login-staff-icon { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 50%; background: var(--gold-pale); color: var(--amber); }
+.login-staff-icon.is-large { width: 66px; height: 66px; }
