@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Icon from '@/components/Icon';
+import LoginRoleIcon from '@/components/login/LoginRoleIcon';
 import { api } from '@/lib/api';
 import { homeForRole, useAuth } from '@/components/auth/AuthProvider';
 
@@ -204,7 +205,7 @@ function LoginContent() {
               <Icon name="arrowLeft" size={18} /> Cambiar empleado
             </button>
             <div className="pin-person">
-              <span className="login-staff-icon is-large"><Icon name={selectedStaff.icon || 'users'} size={30} /></span>
+              <LoginRoleIcon name={selectedStaff.icon} size={72} />
               <span className="eyebrow">Acceso del equipo</span>
               <h2>Hola, {selectedStaff.name.split(' ')[0]}</h2>
               <p className="login-subtitle">Ingresa tu PIN para abrir tu sesión.</p>
@@ -254,7 +255,7 @@ function LoginContent() {
                     className="staff-login-card"
                     onClick={() => { setSelectedStaff(person); setPin(''); setError(''); }}
                   >
-                    <span className="login-staff-icon"><Icon name={person.icon || 'users'} size={24} /></span>
+                    <LoginRoleIcon name={person.icon} size={42} />
                     <span className="staff-login-name">{person.name}</span>
                     <Icon name="chevronRight" size={18} />
                   </button>

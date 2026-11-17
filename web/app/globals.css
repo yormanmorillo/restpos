@@ -5901,3 +5901,6 @@ h1 { font-weight: 700; }
 
 .login-staff-icon { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 50%; background: var(--gold-pale); color: var(--amber); }
 .login-staff-icon.is-large { width: 66px; height: 66px; }
+
+.login-role-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 50%; border: 2px solid transparent; overflow: hidden; }
+.login-role-icon svg { display: block; }
